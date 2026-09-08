@@ -214,14 +214,14 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         <button
           type="button"
           onClick={() => setMode('OUT')}
-          className={`p-3.5 rounded-2xl border flex items-center justify-center gap-2 transition-all ${
+          className={`p-3 sm:p-3.5 rounded-2xl border flex items-center justify-center gap-1.5 sm:gap-2 transition-all min-h-[48px] ${
             mode === 'OUT'
               ? 'bg-rose-600 text-white border-rose-600 shadow-md font-bold'
               : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50 font-semibold'
           }`}
         >
-          <MinusCircle className="w-5 h-5" />
-          <span>Stock Out (-) [Deduct]</span>
+          <MinusCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+          <span className="text-xs sm:text-sm">Stock Out (-)</span>
         </button>
       </div>
 
@@ -477,7 +477,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         isOpen={scannerModalOpen}
         onClose={() => setScannerModalOpen(false)}
         onScan={handleProcessScan}
-        title={mode === 'IN' ? 'Scan to Restock (+)' : 'Scan to Deduct (-)'}
+        title={mode === 'IN' ? 'Scan to Stock In (+)' : 'Scan to Stock Out (-)'}
         subtitle={`Adjusting stock by ${stepQuantity} unit(s) • ${
           continuousScan ? 'Multi-scan with 3s anti-duplicate pause' : 'Auto-closes upon scan'
         }`}
