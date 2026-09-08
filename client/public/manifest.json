@@ -1,0 +1,56 @@
+{
+  "name": "Nexus Retail POS & Inventory",
+  "short_name": "Nexus POS",
+  "description": "Professional Retail Point of Sale and Inventory Management System with Barcode Scanning",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "finance", "productivity", "shopping"],
+  "shortcuts": [
+    {
+      "name": "POS Register",
+      "url": "/?tab=pos",
+      "description": "Open Cash Register"
+    },
+    {
+      "name": "Stock Scan (+/-)",
+      "url": "/?tab=scanner",
+      "description": "Rapid Barcode Stock Adjuster"
+    },
+    {
+      "name": "Inventory",
+      "url": "/?tab=inventory",
+      "description": "View Stock Levels"
+    }
+  ]
+}

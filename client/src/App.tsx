@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Department, Product, CartItem } from './types';
 import { api } from './utils/api';
 import { Sidebar, ActiveTab } from './components/Sidebar';
+import { InstallAppModal } from './components/InstallAppModal';
 import { POSPage } from './pages/POSPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { QuickScannerPage } from './pages/QuickScannerPage';
@@ -15,6 +16,34 @@ export function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // PWA Installation & Standalone detection
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState<boolean>(false);
+  const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Detect if running as standalone installed app on iOS or Android
+    const checkStandalone = () => {
+      const isStandaloneMode =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+      setIsStandalone(isStandaloneMode);
+    };
+
+    checkStandalone();
+
+    // Listen to Android Chrome PWA install prompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -79,6 +108,8 @@ export function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         cartCount={totalCartItemCount}
+        onOpenInstallModal={() => setInstallModalOpen(true)}
+        isStandalone={isStandalone}
       />
 
       {/* Main Full-Width Content Workspace */}
@@ -122,6 +153,14 @@ export function App() {
           )}
         </main>
       </div>
+
+      {/* PWA Mobile Installation Modal */}
+      <InstallAppModal
+        isOpen={installModalOpen}
+        onClose={() => setInstallModalOpen(false)}
+        deferredPrompt={deferredPrompt}
+        isStandalone={isStandalone}
+      />
     </div>
   );
 }

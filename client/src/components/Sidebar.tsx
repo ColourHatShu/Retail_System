@@ -11,6 +11,8 @@ import {
   Zap,
   Radio,
   Clock,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 
 export type ActiveTab = 'pos' | 'inventory' | 'scanner' | 'history' | 'analytics';
@@ -19,12 +21,16 @@ interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   cartCount?: number;
+  onOpenInstallModal?: () => void;
+  isStandalone?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   cartCount = 0,
+  onOpenInstallModal,
+  isStandalone = false,
 }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -144,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Footer Info (Hardware scanner status & Store terminal stats) */}
-      <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40 space-y-3">
+      <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40 space-y-2.5">
         {/* Hardware scanner wedge status */}
         <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px]">
           <div className="flex items-center gap-2 text-zinc-300 font-medium">
@@ -159,9 +165,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </span>
         </div>
 
+        {/* Install Mobile App Button */}
+        {onOpenInstallModal && (
+          <button
+            type="button"
+            onClick={onOpenInstallModal}
+            className="w-full flex items-center justify-between p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 text-[11px] text-zinc-300 hover:text-white transition-colors group"
+          >
+            <div className="flex items-center gap-2 font-medium">
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span>{isStandalone ? 'Installed (App Mode)' : 'Install on Phone'}</span>
+            </div>
+            {!isStandalone && (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800/50 flex items-center gap-1">
+                <Download className="w-2.5 h-2.5" />
+                App
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Terminal Info */}
         <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono px-1">
-          <span>v2.1.0 • Standalone</span>
+          <span>v2.1.0 • PWA Ready</span>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-zinc-400" />
             Active
@@ -193,9 +219,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {!isStandalone && onOpenInstallModal && (
+            <button
+              onClick={onOpenInstallModal}
+              className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 text-[10px] font-bold rounded-lg border border-emerald-500/30 shadow-xs active:scale-95 transition-transform"
+            >
+              <Smartphone className="w-3 h-3" />
+              <span>Install App</span>
+            </button>
+          )}
           {cartCount > 0 && (
             <span className="px-2 py-0.5 bg-emerald-500 text-zinc-950 text-[10px] font-bold rounded-full">
-              {cartCount} in Cart
+              {cartCount}
             </span>
           )}
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

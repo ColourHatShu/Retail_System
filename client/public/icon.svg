@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b" />
+      <stop offset="100%" stop-color="#09090b" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#27272a" stroke-width="4" />
+
+  <!-- Ambient Glow -->
+  <circle cx="256" cy="240" r="160" fill="url(#glowGrad)" />
+
+  <!-- Retail Store Awning -->
+  <path d="M120 170 L392 170 L370 230 L330 244 L290 230 L256 244 L222 230 L182 244 L142 230 Z" fill="url(#emeraldGrad)" />
+  <path d="M100 170 L412 170 L400 152 L112 152 Z" fill="#6ee7b7" />
+
+  <!-- Store Pillars & Frame -->
+  <rect x="144" y="244" width="24" height="110" rx="6" fill="#a1a1aa" opacity="0.8" />
+  <rect x="244" y="244" width="24" height="110" rx="6" fill="#a1a1aa" opacity="0.8" />
+  <rect x="344" y="244" width="24" height="110" rx="6" fill="#a1a1aa" opacity="0.8" />
+  <rect x="120" y="354" width="272" height="18" rx="8" fill="#e4e4e7" />
+
+  <!-- Barcode Overlay in Center -->
+  <g transform="translate(196, 270)">
+    <rect x="0" y="0" width="8" height="60" rx="2" fill="#34d399" />
+    <rect x="14" y="0" width="14" height="60" rx="2" fill="#34d399" />
+    <rect x="34" y="0" width="6" height="60" rx="2" fill="#34d399" />
+    <rect x="46" y="0" width="16" height="60" rx="2" fill="#34d399" />
+    <rect x="68" y="0" width="8" height="60" rx="2" fill="#34d399" />
+    <rect x="82" y="0" width="18" height="60" rx="2" fill="#34d399" />
+    <rect x="106" y="0" width="8" height="60" rx="2" fill="#34d399" />
+    <!-- Red Laser Scan line across Barcode -->
+    <line x1="-20" y1="30" x2="140" y2="30" stroke="#f43f5e" stroke-width="4" stroke-linecap="round" />
+  </g>
+
+  <!-- Checkout Sparkle / Star in top right -->
+  <circle cx="390" cy="120" r="14" fill="#10b981" />
+  <circle cx="390" cy="120" r="8" fill="#ecfdf5" />
+</svg>
