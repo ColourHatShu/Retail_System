@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Barcode, Sparkles, Camera, Check } from 'lucide-react';
+import { X, Barcode, Sparkles, Camera, Check, Loader2, Wand2 } from 'lucide-react';
 import { Department, Product } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { lookupBarcodeOnline } from '../utils/productLookup';
+import { playScanSuccessSound } from '../utils/audio';
+import { useHardwareBarcodeScanner } from '../utils/barcodeListener';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -34,6 +37,51 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [autofillSuccess, setAutofillSuccess] = useState<string | null>(null);
+
+  const performBarcodeAutofill = async (codeToLookup: string) => {
+    const clean = codeToLookup.trim();
+    if (!clean || clean.length < 6) return;
+
+    setIsLookingUp(true);
+    setAutofillSuccess(null);
+    try {
+      const result = await lookupBarcodeOnline(clean, departments);
+      if (result.found && result.name) {
+        setName(result.name);
+        if (result.departmentId) {
+          setDepartmentId(result.departmentId);
+        }
+        if (result.unit) {
+          setUnit(result.unit);
+        }
+        if (result.sku) {
+          setSku(result.sku);
+        }
+        if (result.suggestedPrice && (!price || price === '0' || price === '0.00')) {
+          setPrice(result.suggestedPrice.toFixed(2));
+        }
+        setAutofillSuccess(`✓ Autofilled "${result.name}" from ${result.source || 'product registry'}`);
+        playScanSuccessSound();
+      } else if (result.sku && !sku) {
+        setSku(result.sku);
+        setAutofillSuccess(`Barcode set. (Generated SKU: ${result.sku})`);
+      }
+    } catch (err) {
+      console.warn('Autofill lookup error:', err);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  // Hardware barcode scanner support
+  useHardwareBarcodeScanner((scanned) => {
+    if (isOpen && !scannerOpen) {
+      setBarcode(scanned);
+      performBarcodeAutofill(scanned);
+    }
+  });
 
   useEffect(() => {
     if (product) {
@@ -56,8 +104,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setStockQuantity('10');
       setMinStockLevel('5');
       setUnit('pcs');
+      if (initialBarcode) {
+        performBarcodeAutofill(initialBarcode);
+      }
     }
     setError(null);
+    setAutofillSuccess(null);
   }, [product, defaultDepartmentId, initialBarcode, isOpen, departments]);
 
   if (!isOpen) return null;
@@ -193,20 +245,34 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               />
             </div>
 
-            {/* Barcode with Scan & Generate Helpers */}
+            {/* Barcode with Scan, Auto-Fill, & Generate Helpers */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
                   Barcode (UPC / EAN / Code 128) *
                 </label>
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={handleOpenScanner}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded-md hover:bg-indigo-50"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded-md hover:bg-indigo-50 border border-indigo-100"
                   >
                     <Camera className="w-3 h-3" />
                     Scan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => performBarcodeAutofill(barcode)}
+                    disabled={isLookingUp || !barcode.trim()}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md transition-colors disabled:opacity-40"
+                    title="Lookup product name and details online"
+                  >
+                    {isLookingUp ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                    ) : (
+                      <Wand2 className="w-3 h-3 text-emerald-600" />
+                    )}
+                    <span>{isLookingUp ? 'Searching...' : 'Auto-Fill'}</span>
                   </button>
                   <button
                     type="button"
@@ -218,6 +284,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   </button>
                 </div>
               </div>
+
               <div className="relative">
                 <Barcode className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -229,6 +296,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   required
                 />
               </div>
+
+              {/* Online Lookup Status */}
+              {isLookingUp && (
+                <div className="mt-2 flex items-center gap-2 p-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs rounded-xl animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                  <span>Searching global product database for barcode details...</span>
+                </div>
+              )}
+
+              {autofillSuccess && !isLookingUp && (
+                <div className="mt-2 flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium">
+                  <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span className="truncate">{autofillSuccess}</span>
+                </div>
+              )}
             </div>
 
             {/* Price & Cost */}
@@ -357,6 +439,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         onScan={(scanned) => {
           setBarcode(scanned);
           setScannerOpen(false);
+          performBarcodeAutofill(scanned);
         }}
         title="Scan Barcode for Product"
       />
