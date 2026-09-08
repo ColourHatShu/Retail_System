@@ -1,0 +1,14 @@
+# Netlify Configuration for Nexus POS & Inventory Management System
+
+[build]
+  base = ""
+  publish = "client/dist"
+  command = "npm run build:client"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,4 +1,5 @@
-import { Department, Product, StockMovement, Sale, CartItem } from '../types';
+import { Department, Product, StockMovement, Sale } from '../types';
+import { isSupabaseConfigured, supabaseApi } from './supabase';
 
 const API_BASE = '/api';
 
@@ -19,25 +20,29 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
   return data.data;
 }
 
-// Departments API
+// Unified API Router: routes to Supabase Cloud or Local Express/SQLite API
 export const api = {
   // Departments
   async getDepartments(): Promise<Department[]> {
+    if (isSupabaseConfigured()) return supabaseApi.getDepartments();
     return fetchJson<Department[]>(`${API_BASE}/departments`);
   },
   async createDepartment(data: Partial<Department>): Promise<Department> {
+    if (isSupabaseConfigured()) return supabaseApi.createDepartment(data);
     return fetchJson<Department>(`${API_BASE}/departments`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
   async updateDepartment(id: number, data: Partial<Department>): Promise<Department> {
+    if (isSupabaseConfigured()) return supabaseApi.updateDepartment(id, data);
     return fetchJson<Department>(`${API_BASE}/departments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
   async deleteDepartment(id: number): Promise<{ message: string }> {
+    if (isSupabaseConfigured()) return supabaseApi.deleteDepartment(id);
     return fetchJson<{ message: string }>(`${API_BASE}/departments/${id}`, {
       method: 'DELETE',
     });
@@ -45,6 +50,7 @@ export const api = {
 
   // Products
   async getProducts(params?: { department_id?: number | string; search?: string; low_stock?: boolean }): Promise<Product[]> {
+    if (isSupabaseConfigured()) return supabaseApi.getProducts(params);
     const query = new URLSearchParams();
     if (params?.department_id) query.append('department_id', params.department_id.toString());
     if (params?.search) query.append('search', params.search);
@@ -53,21 +59,25 @@ export const api = {
     return fetchJson<Product[]>(`${API_BASE}/products${qs ? `?${qs}` : ''}`);
   },
   async getProductByBarcode(barcode: string): Promise<Product> {
+    if (isSupabaseConfigured()) return supabaseApi.getProductByBarcode(barcode);
     return fetchJson<Product>(`${API_BASE}/products/barcode/${encodeURIComponent(barcode.trim())}`);
   },
   async createProduct(data: Partial<Product>): Promise<Product> {
+    if (isSupabaseConfigured()) return supabaseApi.createProduct(data);
     return fetchJson<Product>(`${API_BASE}/products`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
   async updateProduct(id: number, data: Partial<Product>): Promise<Product> {
+    if (isSupabaseConfigured()) return supabaseApi.updateProduct(id, data);
     return fetchJson<Product>(`${API_BASE}/products/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
   async deleteProduct(id: number): Promise<{ message: string }> {
+    if (isSupabaseConfigured()) return supabaseApi.deleteProduct(id);
     return fetchJson<{ message: string }>(`${API_BASE}/products/${id}`, {
       method: 'DELETE',
     });
@@ -81,6 +91,7 @@ export const api = {
     reason?: string;
     reference_id?: string;
   }): Promise<{ product: Product; movement: StockMovement }> {
+    if (isSupabaseConfigured()) return supabaseApi.scanAdjustStock(data);
     return fetchJson<{ product: Product; movement: StockMovement }>(`${API_BASE}/inventory/scan-adjust`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -91,6 +102,7 @@ export const api = {
     actual_count: number;
     reason?: string;
   }): Promise<{ product: Product; movement: StockMovement | null }> {
+    if (isSupabaseConfigured()) return supabaseApi.setPhysicalCount(data);
     return fetchJson<{ product: Product; movement: StockMovement | null }>(`${API_BASE}/inventory/set-count`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -102,6 +114,7 @@ export const api = {
     created_departments: Department[];
     total_processed: number;
   }> {
+    if (isSupabaseConfigured()) return supabaseApi.importProductsBatch(items);
     return fetchJson<{
       inserted_count: number;
       updated_count: number;
@@ -131,12 +144,14 @@ export const api = {
     customer_name?: string;
     customer_phone?: string;
   }): Promise<Sale> {
+    if (isSupabaseConfigured()) return supabaseApi.checkout(order);
     return fetchJson<Sale>(`${API_BASE}/sales/checkout`, {
       method: 'POST',
       body: JSON.stringify(order),
     });
   },
   async getSales(limit = 50, offset = 0): Promise<Sale[]> {
+    if (isSupabaseConfigured()) return supabaseApi.getSales(limit, offset);
     return fetchJson<Sale[]>(`${API_BASE}/sales?limit=${limit}&offset=${offset}`);
   },
 
@@ -151,6 +166,7 @@ export const api = {
     limit?: number;
     offset?: number;
   }): Promise<StockMovement[]> {
+    if (isSupabaseConfigured()) return supabaseApi.getMovements(params);
     const query = new URLSearchParams();
     if (params?.product_id) query.append('product_id', params.product_id.toString());
     if (params?.department_id) query.append('department_id', params.department_id.toString());
@@ -169,6 +185,7 @@ export const api = {
     total_restocked_units: number;
     total_adjusted_units: number;
   }> {
+    if (isSupabaseConfigured()) return supabaseApi.getMovementSummary();
     return fetchJson<{
       total_movements: number;
       total_sold_units: number;
