@@ -466,6 +466,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
         product={editingProduct}
         departments={departments}
         defaultDepartmentId={selectedDeptId === 'ALL' ? undefined : selectedDeptId}
+        onDepartmentCreated={async () => {
+          await refreshData();
+        }}
       />
 
       <DepartmentModal

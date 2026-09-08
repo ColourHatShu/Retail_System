@@ -1042,6 +1042,9 @@ export const POSPage: React.FC<POSPageProps> = ({
         onSave={handleSaveNewProduct}
         departments={departments}
         initialBarcode={unregisteredBarcode || ''}
+        onDepartmentCreated={async () => {
+          await refreshData();
+        }}
       />
 
       {/* Non-intrusive Scan Toast */}

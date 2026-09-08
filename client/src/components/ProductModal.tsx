@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Barcode, Sparkles, Camera, Check, Loader2, Wand2 } from 'lucide-react';
+import { X, Barcode, Sparkles, Camera, Check, Loader2, Wand2, Plus, FolderPlus } from 'lucide-react';
 import { Department, Product } from '../types';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { lookupBarcodeOnline } from '../utils/productLookup';
 import { playScanSuccessSound } from '../utils/audio';
 import { useHardwareBarcodeScanner } from '../utils/barcodeListener';
+import { api } from '../utils/api';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface ProductModalProps {
   departments: Department[];
   defaultDepartmentId?: number;
   initialBarcode?: string;
+  onDepartmentCreated?: (dept: Department) => Promise<void> | void;
 }
 
 export const ProductModal: React.FC<ProductModalProps> = ({
@@ -24,8 +26,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   departments,
   defaultDepartmentId,
   initialBarcode,
+  onDepartmentCreated,
 }) => {
-  const [departmentId, setDepartmentId] = useState<number>(defaultDepartmentId || (departments[0]?.id || 1));
+  const [departmentId, setDepartmentId] = useState<number>(defaultDepartmentId || (departments[0]?.id || 0));
   const [name, setName] = useState('');
   const [barcode, setBarcode] = useState('');
   const [sku, setSku] = useState('');
@@ -39,6 +42,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [autofillSuccess, setAutofillSuccess] = useState<string | null>(null);
+
+  // Quick Inline Department Creation State
+  const [localDepartments, setLocalDepartments] = useState<Department[]>(departments);
+  const [showNewDeptForm, setShowNewDeptForm] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptCode, setNewDeptCode] = useState('');
+  const [newDeptCodeTouched, setNewDeptCodeTouched] = useState(false);
+  const [newDeptColor, setNewDeptColor] = useState('#0ea5e9');
+  const [isCreatingDept, setIsCreatingDept] = useState(false);
+
+  useEffect(() => {
+    setLocalDepartments(departments);
+  }, [departments]);
 
   const performBarcodeAutofill = async (codeToLookup: string) => {
     const clean = codeToLookup.trim();
@@ -94,8 +110,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setStockQuantity(product.stock_quantity.toString());
       setMinStockLevel(product.min_stock_level.toString());
       setUnit(product.unit || 'pcs');
+      setShowNewDeptForm(false);
     } else {
-      setDepartmentId(defaultDepartmentId || (departments[0]?.id || 1));
+      setDepartmentId(defaultDepartmentId || (departments[0]?.id || 0));
       setName('');
       setBarcode(initialBarcode || '');
       setSku('');
@@ -104,6 +121,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setStockQuantity('10');
       setMinStockLevel('5');
       setUnit('pcs');
+      if (departments.length === 0) {
+        setShowNewDeptForm(true);
+      } else {
+        setShowNewDeptForm(false);
+      }
       if (initialBarcode) {
         performBarcodeAutofill(initialBarcode);
       }
@@ -129,16 +151,102 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const handleDepartmentChange = (newDeptId: number) => {
     setDepartmentId(newDeptId);
     if (!sku && !product) {
-      const selectedDept = departments.find((d) => d.id === newDeptId);
+      const selectedDept = localDepartments.find((d) => d.id === newDeptId);
       if (selectedDept) {
         setSku(`${selectedDept.code}-${Math.floor(100 + Math.random() * 900)}`);
       }
     }
   };
 
+  // Quick Create Department Handler
+  const handleCreateQuickDepartment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanName = newDeptName.trim();
+    if (!cleanName) {
+      setError('Please enter a department name');
+      return;
+    }
+
+    const cleanCode = (
+      newDeptCode.trim() ||
+      cleanName.replace(/[^a-zA-Z]/g, '').slice(0, 4) ||
+      'DEPT'
+    ).toUpperCase();
+
+    try {
+      setIsCreatingDept(true);
+      setError(null);
+      const created = await api.createDepartment({
+        name: cleanName,
+        code: cleanCode,
+        color: newDeptColor,
+      });
+
+      setLocalDepartments((prev) => [...prev.filter((d) => d.id !== created.id), created]);
+      setDepartmentId(created.id);
+      setShowNewDeptForm(false);
+      setNewDeptName('');
+      setNewDeptCode('');
+      setNewDeptCodeTouched(false);
+
+      if (!sku) {
+        setSku(`${cleanCode}-${Math.floor(100 + Math.random() * 900)}`);
+      }
+
+      playScanSuccessSound();
+      setAutofillSuccess(`✓ Department "${created.name}" created and selected`);
+      setTimeout(() => setAutofillSuccess(null), 3500);
+
+      if (onDepartmentCreated) {
+        await onDepartmentCreated(created);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to create department');
+    } finally {
+      setIsCreatingDept(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    let activeDeptId = departmentId;
+
+    // If user filled in quick department fields, auto-create it now
+    if ((!activeDeptId || showNewDeptForm) && newDeptName.trim()) {
+      try {
+        setIsCreatingDept(true);
+        const cleanCode = (
+          newDeptCode.trim() ||
+          newDeptName.trim().replace(/[^a-zA-Z]/g, '').slice(0, 4) ||
+          'DEPT'
+        ).toUpperCase();
+        const created = await api.createDepartment({
+          name: newDeptName.trim(),
+          code: cleanCode,
+          color: newDeptColor,
+        });
+        activeDeptId = created.id;
+        setDepartmentId(created.id);
+        setLocalDepartments((prev) => [...prev.filter((d) => d.id !== created.id), created]);
+        setShowNewDeptForm(false);
+        if (onDepartmentCreated) {
+          await onDepartmentCreated(created);
+        }
+      } catch (deptErr: any) {
+        setError(deptErr.message || 'Failed to create department');
+        setIsCreatingDept(false);
+        return;
+      } finally {
+        setIsCreatingDept(false);
+      }
+    }
+
+    if (!activeDeptId || activeDeptId === 0) {
+      setError('Please select or create a department for this product');
+      return;
+    }
 
     if (!name.trim()) {
       setError('Product name is required');
@@ -156,7 +264,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     try {
       setIsSaving(true);
       await onSave({
-        department_id: Number(departmentId),
+        department_id: Number(activeDeptId),
         name: name.trim(),
         barcode: barcode.trim(),
         sku: sku.trim() || undefined,
@@ -211,23 +319,154 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               </div>
             )}
 
-            {/* Department Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1.5">
-                Department *
-              </label>
+            {/* Department Selection & Dropdown Creator */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
+                  Department *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowNewDeptForm(!showNewDeptForm)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{showNewDeptForm ? 'Cancel Dept' : '+ Add New Department'}</span>
+                </button>
+              </div>
+
               <select
-                value={departmentId}
-                onChange={(e) => handleDepartmentChange(Number(e.target.value))}
+                value={showNewDeptForm ? '__NEW__' : departmentId || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__NEW__') {
+                    setShowNewDeptForm(true);
+                  } else {
+                    setShowNewDeptForm(false);
+                    handleDepartmentChange(Number(val));
+                  }
+                }}
                 className="w-full px-3 py-2.5 text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 font-medium"
-                required
+                required={!showNewDeptForm}
               >
-                {departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name} ({dept.code})
-                  </option>
-                ))}
+                {localDepartments.length === 0 ? (
+                  <option value="__NEW__">➕ + Add New Department...</option>
+                ) : (
+                  <>
+                    <option value="" disabled>
+                      Select Department
+                    </option>
+                    {localDepartments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name} ({dept.code})
+                      </option>
+                    ))}
+                    <option value="__NEW__">➕ + Add New Department...</option>
+                  </>
+                )}
               </select>
+
+              {/* Inline Quick Department Creator Form */}
+              {showNewDeptForm && (
+                <div className="p-3.5 bg-zinc-50 border border-zinc-200/90 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-150 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                      <FolderPlus className="w-3.5 h-3.5 text-indigo-600" />
+                      Create New Department
+                    </span>
+                    {localDepartments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowNewDeptForm(false)}
+                        className="text-[11px] text-zinc-400 hover:text-zinc-700"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                        Department Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={newDeptName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewDeptName(val);
+                          if (!newDeptCodeTouched) {
+                            const code = val.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
+                            setNewDeptCode(code);
+                          }
+                        }}
+                        placeholder="e.g. Beverages, Snacks..."
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                        Short Code *
+                      </label>
+                      <input
+                        type="text"
+                        value={newDeptCode}
+                        onChange={(e) => {
+                          setNewDeptCodeTouched(true);
+                          setNewDeptCode(e.target.value.toUpperCase());
+                        }}
+                        placeholder="e.g. BEV"
+                        className="w-full px-2.5 py-1.5 text-xs font-mono uppercase bg-white border border-zinc-300 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-400 font-medium">Color:</span>
+                      {[
+                        '#0ea5e9',
+                        '#10b981',
+                        '#f59e0b',
+                        '#ec4899',
+                        '#8b5cf6',
+                        '#6366f1',
+                        '#14b8a6',
+                        '#f43f5e',
+                      ].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setNewDeptColor(c)}
+                          className={`w-4 h-4 rounded-full border-2 transition-transform ${
+                            newDeptColor === c
+                              ? 'border-zinc-900 scale-125'
+                              : 'border-transparent hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCreateQuickDepartment}
+                      disabled={isCreatingDept || !newDeptName.trim()}
+                      className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+                    >
+                      {isCreatingDept ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-white" />
+                      ) : (
+                        <Check className="w-3 h-3 text-emerald-400" />
+                      )}
+                      <span>Create & Select</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Product Name */}
