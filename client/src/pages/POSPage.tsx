@@ -273,6 +273,7 @@ export const POSPage: React.FC<POSPageProps> = ({
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.barcode.includes(searchQuery) ||
         (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesDept && matchesSearch;
     });
   }, [products, selectedDeptId, searchQuery]);
 

@@ -551,40 +551,43 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
 
         {/* Viewfinder / Camera Area */}
-        <div className="relative bg-zinc-950 flex flex-col items-center justify-center min-h-[300px] overflow-hidden">
-          <div id="barcode-reader-view" className="w-full max-h-[320px] overflow-hidden" />
+        <div className="relative bg-zinc-950 flex items-center justify-center min-h-[320px] sm:min-h-[350px] overflow-hidden">
+          <div id="barcode-reader-view" className="w-full h-full min-h-[320px] overflow-hidden flex items-center justify-center [&_video]:object-cover" />
 
           {/* Scanner Overlay Line / Pause feedback */}
           {isScanning && !errorMessage && (
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-3">
-              <div
-                className={`w-[88%] max-w-[340px] h-32 sm:h-36 border-2 rounded-2xl relative transition-all duration-300 ${
-                  isPaused
-                    ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_25px_rgba(52,211,153,0.5)] ring-4 ring-emerald-500/20'
-                    : 'border-dashed border-emerald-400/90 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
-                }`}
-              >
-                {!isPaused ? (
-                  <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center px-2">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500 text-zinc-950 flex items-center justify-center font-bold">
-                      <Check className="w-5 h-5 stroke-[3]" />
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Perfectly Centered Target Box & Laser Line */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[84%] max-w-[320px] h-32 sm:h-36 pointer-events-none">
+                <div
+                  className={`w-full h-full border-2 rounded-2xl relative transition-all duration-300 ${
+                    isPaused
+                      ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_25px_rgba(52,211,153,0.5)] ring-4 ring-emerald-500/20'
+                      : 'border-dashed border-emerald-400/90 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                  }`}
+                >
+                  {!isPaused ? (
+                    <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center px-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 text-zinc-950 flex items-center justify-center font-bold">
+                        <Check className="w-5 h-5 stroke-[3]" />
+                      </div>
+                      <span className="text-xs font-bold text-white font-mono bg-zinc-950/80 px-2 py-0.5 rounded">
+                        {lastScanned}
+                      </span>
+                      <span className="text-[10px] font-semibold text-emerald-300">
+                        Captured!
+                      </span>
                     </div>
-                    <span className="text-xs font-bold text-white font-mono bg-zinc-950/80 px-2 py-0.5 rounded">
-                      {lastScanned}
-                    </span>
-                    <span className="text-[10px] font-semibold text-emerald-300">
-                      Captured!
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
-              {/* Status and manual unlock button */}
-              <div className="mt-3 flex flex-col items-center gap-1.5 text-center px-4 pointer-events-auto">
+              {/* Status and instruction pill anchored at the bottom */}
+              <div className="absolute bottom-2.5 inset-x-0 flex flex-col items-center gap-1 text-center px-4 pointer-events-auto">
                 {isPaused ? (
-                  <div className="flex flex-col items-center gap-2">
+                  <div className="flex flex-col items-center gap-1.5">
                     <span className="text-[11px] font-semibold text-emerald-200 bg-zinc-900/95 px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                       <span>Paused ({cooldownSeconds}s) to prevent double-scan</span>
@@ -593,7 +596,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     <button
                       type="button"
                       onClick={handleUnlockNow}
-                      className="px-4 py-2 bg-emerald-400 hover:bg-emerald-300 text-zinc-950 text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
+                      className="px-3.5 py-1.5 bg-emerald-400 hover:bg-emerald-300 text-zinc-950 text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
                     >
                       <Zap className="w-3.5 h-3.5 fill-current" />
                       <span>Scan Next Item Now</span>
@@ -601,11 +604,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   </div>
                 ) : (
                   <>
-                    <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30">
+                    <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30 shadow-xs">
                       Align barcode along the green line
                     </span>
-                    <span className="text-[10px] text-zinc-300 bg-black/60 px-2.5 py-0.5 rounded">
-                      💡 Bottles / Cans: Hold barcode horizontally across the line or tilt to avoid glare
+                    <span className="text-[10px] text-zinc-300 bg-black/70 px-2.5 py-0.5 rounded backdrop-blur-xs">
+                      💡 Bottles / Cans: Hold barcode horizontally across the line
                     </span>
                   </>
                 )}

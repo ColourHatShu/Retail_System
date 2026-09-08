@@ -60,3 +60,16 @@ button, a, [role="button"] {
     display: none !important;
   }
 }
+
+/* Barcode scanner camera feed centering & containment */
+#barcode-reader-view video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 0 !important;
+}
+
+#barcode-reader-view #qr-shaded-region {
+  border-color: rgba(0, 0, 0, 0.45) !important;
+}
+
