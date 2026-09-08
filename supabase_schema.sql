@@ -254,24 +254,6 @@ BEGIN
         
         INSERT INTO public.departments (name, code, description, color) VALUES 
         ('Electronics & Tech', 'ELEC', 'Cables, chargers, earphones, accessories', '#8b5cf6') RETURNING id INTO v_elec_id;
-
-        -- Starter Products
-        INSERT INTO public.products (barcode, sku, name, department_id, price, cost_price, stock_quantity, min_stock_level, unit) VALUES
-        ('8901234567890', 'BEV-001', 'Sparkling Mineral Water 500ml', v_bev_id, 1.99, 0.85, 45, 10, 'bottle'),
-        ('8901234567891', 'BEV-002', 'Cold Pressed Orange Juice 1L', v_bev_id, 4.50, 2.20, 24, 8, 'bottle'),
-        ('8901234567892', 'GROC-001', 'Organic Rolled Oats 1kg', v_groc_id, 5.25, 3.10, 18, 6, 'pack'),
-        ('8901234567893', 'GROC-002', 'Extra Virgin Olive Oil 750ml', v_groc_id, 12.99, 7.50, 12, 4, 'bottle'),
-        ('8901234567894', 'DAIRY-001', 'Greek Plain Yogurt 500g', v_dairy_id, 3.49, 1.80, 15, 5, 'tub'),
-        ('8901234567895', 'DAIRY-002', 'Artisan Cheddar Block 250g', v_dairy_id, 4.99, 2.75, 8, 5, 'pcs'),
-        ('8901234567896', 'BAKE-001', 'Sourdough Country Loaf', v_bake_id, 4.25, 1.50, 10, 4, 'loaf'),
-        ('8901234567897', 'BAKE-002', 'Dark Chocolate Sea Salt Cookies', v_bake_id, 3.75, 1.90, 30, 10, 'pack'),
-        ('8901234567898', 'CARE-001', 'Herbal Moisturizing Hand Soap 300ml', v_care_id, 6.50, 3.00, 20, 5, 'bottle'),
-        ('8901234567899', 'ELEC-001', 'Braided USB-C Fast Charging Cable 2m', v_elec_id, 9.99, 3.20, 35, 8, 'pcs');
-
-        -- Initial Stock Movements
-        INSERT INTO public.stock_movements (product_id, type, quantity_change, quantity_before, quantity_after, reference_id, reason)
-        SELECT id, 'INITIAL', stock_quantity, 0, stock_quantity, 'INIT-SEED', 'Initial system stock'
-        FROM public.products;
     END IF;
 END;
 $$;
