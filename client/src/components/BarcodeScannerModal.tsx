@@ -53,27 +53,41 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         const formatsToSupport = [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
           Html5QrcodeSupportedFormats.UPC_A,
           Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.ITF,
           Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
         ];
 
         const html5QrCode = new Html5Qrcode(scannerElementId, {
           formatsToSupport,
           verbose: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
         });
         scannerRef.current = html5QrCode;
 
         const config = {
-          fps: 15,
-          qrbox: { width: 280, height: 160 },
+          fps: 20,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => ({
+            width: Math.min(Math.floor(viewfinderWidth * 0.90), 340),
+            height: Math.min(Math.floor(viewfinderHeight * 0.50), 160),
+          }),
           aspectRatio: 1.333333,
         };
 
         await html5QrCode.start(
-          { facingMode: 'environment' },
+          {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           config,
           (decodedText) => {
             const now = Date.now();
@@ -84,6 +98,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             lastScanTimeRef.current = now;
             setLastScanned(decodedText);
             playScanSuccessSound();
+
+            // Mobile vibration feedback
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              try {
+                navigator.vibrate([60, 40, 60]);
+              } catch {}
+            }
 
             onScan(decodedText);
 
@@ -199,13 +220,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
           {/* Scanner Overlay Line */}
           {isScanning && (
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-              <div className="w-64 h-36 border-2 border-dashed border-emerald-400/80 rounded-xl relative">
-                <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-3">
+              <div className="w-[88%] max-w-[340px] h-32 sm:h-36 border-2 border-dashed border-emerald-400/90 rounded-2xl relative shadow-[0_0_15px_rgba(52,211,153,0.3)]">
+                <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
               </div>
-              <span className="mt-3 text-[11px] font-medium text-emerald-300 bg-zinc-900/80 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                Align barcode inside frame
-              </span>
+              <div className="mt-2.5 flex flex-col items-center gap-1 text-center px-4">
+                <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30">
+                  Align barcode along the green line
+                </span>
+                <span className="text-[10px] text-zinc-300 bg-black/60 px-2.5 py-0.5 rounded">
+                  💡 Bottles / Cans: Hold barcode horizontally across the line or tilt to avoid glare
+                </span>
+              </div>
             </div>
           )}
 

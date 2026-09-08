@@ -12,6 +12,7 @@ import {
   Printer,
   ChevronDown,
   FileSpreadsheet,
+  Package,
 } from 'lucide-react';
 import { Department, Product } from '../types';
 import { api } from '../utils/api';
@@ -115,7 +116,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
   };
 
   return (
-    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
+    <div className="w-full max-w-full min-w-0 px-2.5 sm:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8 overflow-x-hidden">
       {/* Top Header & Stat Tiles */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
@@ -233,45 +234,47 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
         </div>
 
         {/* Department Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-          <button
-            onClick={() => setSelectedDeptId('ALL')}
-            className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-              selectedDeptId === 'ALL'
-                ? 'bg-zinc-900 text-white shadow-xs'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
-            }`}
-          >
-            All Departments ({products.length})
-          </button>
+        <div className="w-full max-w-full min-w-0 overflow-x-auto pb-1 no-scrollbar">
+          <div className="flex items-center gap-1.5 text-xs w-max">
+            <button
+              onClick={() => setSelectedDeptId('ALL')}
+              className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
+                selectedDeptId === 'ALL'
+                  ? 'bg-zinc-900 text-white shadow-xs'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
+              }`}
+            >
+              All Departments ({products.length})
+            </button>
 
-          {departments.map((dept) => {
-            const isSelected = selectedDeptId === dept.id;
-            return (
-              <button
-                key={dept.id}
-                onClick={() => setSelectedDeptId(dept.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-                  isSelected
-                    ? 'bg-zinc-900 text-white shadow-xs'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
-                }`}
-              >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: dept.color || '#4f46e5' }}
-                />
-                <span>{dept.name}</span>
-                <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
-              </button>
-            );
-          })}
+            {departments.map((dept) => {
+              const isSelected = selectedDeptId === dept.id;
+              return (
+                <button
+                  key={dept.id}
+                  onClick={() => setSelectedDeptId(dept.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
+                    isSelected
+                      ? 'bg-zinc-900 text-white shadow-xs'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: dept.color || '#4f46e5' }}
+                  />
+                  <span>{dept.name}</span>
+                  <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Inventory Products Table */}
-      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden w-full max-w-full min-w-0">
+        <div className="overflow-x-auto w-full max-w-full">
           <table className="w-full min-w-[640px] text-left text-xs">
             <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>
@@ -418,7 +421,29 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
             </tbody>
           </table>
 
-          {filteredProducts.length === 0 && (
+          {products.length === 0 ? (
+            <div className="p-8 sm:p-12 text-center text-zinc-500 space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center mx-auto text-zinc-400">
+                <Package className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900">Your Inventory is Currently Empty</h3>
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
+                Add products manually, import catalog from Excel, or scan product barcodes.
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProduct(null);
+                    setProductModalOpen(true);
+                  }}
+                  className="px-4 py-2 bg-zinc-900 text-white text-xs font-semibold rounded-xl hover:bg-zinc-800 transition-all shadow-xs"
+                >
+                  + Add First Product
+                </button>
+              </div>
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="p-12 text-center text-zinc-400">
               <BarcodeIcon className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
               <p className="text-sm font-semibold text-zinc-700">No products match your filters</p>
@@ -426,7 +451,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                 Try clearing search filters or add a new product.
               </p>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 

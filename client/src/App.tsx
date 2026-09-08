@@ -102,7 +102,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col md:flex-row w-full max-w-full overflow-x-hidden">
       {/* Left Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -113,8 +113,8 @@ export function App() {
       />
 
       {/* Main Full-Width Content Workspace */}
-      <div className="flex-1 md:pl-64 flex flex-col min-w-0 pb-16 md:pb-6">
-        <main className="flex-1 w-full">
+      <div className="flex-1 md:pl-64 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden pb-16 md:pb-6">
+        <main className="flex-1 w-full max-w-full min-w-0">
           {activeTab === 'pos' && (
             <POSPage
               products={products}

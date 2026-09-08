@@ -163,7 +163,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
+    <div className="w-full max-w-5xl mx-auto px-2.5 sm:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8 overflow-x-hidden min-w-0">
       {/* Header */}
       <div className="text-center space-y-1">
         <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950 flex items-center justify-center gap-2">

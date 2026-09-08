@@ -3,10 +3,37 @@
 @tailwind utilities;
 
 @layer base {
-  body {
+  html, body {
     @apply bg-zinc-50 text-zinc-900 antialiased selection:bg-zinc-200 selection:text-zinc-900 min-h-screen font-sans;
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
   }
+
+  #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+}
+
+/* Prevent mobile browsers and iOS Safari from auto-zooming when tapping inputs */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Eliminate 300ms mobile tap delay */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* Safe area padding for notch and home indicator on iPhone/Android */
+.pb-safe {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* Custom smooth scrollbar for minimalistic feel */

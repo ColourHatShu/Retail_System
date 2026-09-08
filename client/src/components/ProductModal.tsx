@@ -10,6 +10,7 @@ interface ProductModalProps {
   product?: Product | null;
   departments: Department[];
   defaultDepartmentId?: number;
+  initialBarcode?: string;
 }
 
 export const ProductModal: React.FC<ProductModalProps> = ({
@@ -19,6 +20,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   product,
   departments,
   defaultDepartmentId,
+  initialBarcode,
 }) => {
   const [departmentId, setDepartmentId] = useState<number>(defaultDepartmentId || (departments[0]?.id || 1));
   const [name, setName] = useState('');
@@ -47,7 +49,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     } else {
       setDepartmentId(defaultDepartmentId || (departments[0]?.id || 1));
       setName('');
-      setBarcode('');
+      setBarcode(initialBarcode || '');
       setSku('');
       setPrice('');
       setCostPrice('');
@@ -56,7 +58,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setUnit('pcs');
     }
     setError(null);
-  }, [product, defaultDepartmentId, isOpen, departments]);
+  }, [product, defaultDepartmentId, initialBarcode, isOpen, departments]);
 
   if (!isOpen) return null;
 

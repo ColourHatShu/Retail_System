@@ -13,12 +13,15 @@ import {
   AlertTriangle,
   Barcode as BarcodeIcon,
   Check,
+  Sparkles,
+  PackagePlus,
 } from 'lucide-react';
 import { Department, Product, CartItem, Sale } from '../types';
 import { api } from '../utils/api';
 import { playScanSuccessSound, playPaymentSuccessSound, playScanErrorSound } from '../utils/audio';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { ProductModal } from '../components/ProductModal';
 import { useHardwareBarcodeScanner } from '../utils/barcodeListener';
 
 interface POSPageProps {
@@ -48,6 +51,9 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [unregisteredBarcode, setUnregisteredBarcode] = useState<string | null>(null);
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [scanToast, setScanToast] = useState<{ text: string; type: 'success' | 'warn' } | null>(null);
 
   // Cart calculations
   const subtotal = useMemo(() => {
@@ -124,17 +130,130 @@ export const POSPage: React.FC<POSPageProps> = ({
   // Barcode scanned either from Camera or Hardware Laser Scanner
   const handleBarcodeScanned = (barcode: string) => {
     const clean = barcode.trim();
+    if (!clean) return;
+
     const found = products.find((p) => p.barcode === clean);
     if (found) {
       addToCart(found);
+      setScanToast({
+        type: 'success',
+        text: `✓ Added "${found.name}" ($${Number(found.price).toFixed(2)}) to order`,
+      });
+      setTimeout(() => setScanToast(null), 3500);
     } else {
       playScanErrorSound();
-      alert(`No product found with barcode "${clean}"`);
+      setUnregisteredBarcode(clean);
     }
   };
 
   // Active hardware wedge listener
   useHardwareBarcodeScanner(handleBarcodeScanned);
+
+  // Quick Register Newly Scanned Product
+  const handleSaveNewProduct = async (productData: Partial<Product>) => {
+    try {
+      setIsProcessing(true);
+      const created = await api.createProduct(productData);
+      await refreshData();
+      setProductModalOpen(false);
+      setUnregisteredBarcode(null);
+      // Automatically add newly registered product to cart
+      addToCart(created);
+      playScanSuccessSound();
+      setScanToast({
+        type: 'success',
+        text: `✓ Product "${created.name}" registered and added to order`,
+      });
+      setTimeout(() => setScanToast(null), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Failed to register product');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Quick Seed Popular Beverage / Bottle Products
+  const handleSeedBeverages = async () => {
+    try {
+      setIsProcessing(true);
+      const bevDept = departments.find((d) => d.code === 'BEV') || departments[0];
+      const deptId = bevDept?.id || 1;
+      const samples = [
+        {
+          name: 'Spring Mineral Water 500ml',
+          barcode: '8901030382901',
+          sku: 'BEV-101',
+          price: 1.50,
+          cost_price: 0.60,
+          stock_quantity: 48,
+          min_stock_level: 10,
+          department_id: deptId,
+          unit: 'bottle',
+        },
+        {
+          name: 'Sparkling Mineral Water 750ml',
+          barcode: '8901030382902',
+          sku: 'BEV-102',
+          price: 2.75,
+          cost_price: 1.10,
+          stock_quantity: 36,
+          min_stock_level: 8,
+          department_id: deptId,
+          unit: 'bottle',
+        },
+        {
+          name: 'Coca-Cola 500ml Bottle',
+          barcode: '5449000000996',
+          sku: 'BEV-103',
+          price: 2.25,
+          cost_price: 0.95,
+          stock_quantity: 60,
+          min_stock_level: 12,
+          department_id: deptId,
+          unit: 'bottle',
+        },
+        {
+          name: 'Orange Juice 350ml Bottle',
+          barcode: '8901030382904',
+          sku: 'BEV-104',
+          price: 3.50,
+          cost_price: 1.60,
+          stock_quantity: 24,
+          min_stock_level: 6,
+          department_id: deptId,
+          unit: 'bottle',
+        },
+        {
+          name: 'Iced Green Tea 500ml',
+          barcode: '8901030382905',
+          sku: 'BEV-105',
+          price: 2.50,
+          cost_price: 1.00,
+          stock_quantity: 30,
+          min_stock_level: 8,
+          department_id: deptId,
+          unit: 'bottle',
+        },
+      ];
+
+      for (const item of samples) {
+        await api.createProduct(item);
+      }
+
+      await refreshData();
+      playScanSuccessSound();
+      setScanToast({
+        type: 'success',
+        text: '✓ Sample bottles & beverages added to inventory catalog',
+      });
+      setTimeout(() => setScanToast(null), 3500);
+    } catch (err: any) {
+      console.error('Error seeding beverages:', err);
+      alert('Could not seed sample beverages: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Filter products by department and search
   const filteredProducts = useMemo(() => {
@@ -214,14 +333,14 @@ export const POSPage: React.FC<POSPageProps> = ({
   };
 
   return (
-    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 pb-32 sm:pb-36 lg:pb-8">
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+    <div className="w-full max-w-full min-w-0 px-2.5 sm:px-6 py-3 sm:py-6 pb-32 sm:pb-36 lg:pb-8 overflow-x-hidden">
+      <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 lg:items-start w-full max-w-full min-w-0">
         {/* Main Tabular Product Register (Left / Center) */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 w-full max-w-full space-y-3 sm:space-y-4">
           {/* Top Search & Filter Bar */}
-          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200/80 shadow-xs space-y-3">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl border border-zinc-200/80 shadow-xs space-y-2.5 sm:space-y-3 w-full max-w-full overflow-hidden">
             <div className="flex gap-2 sm:gap-2.5">
-              <div className="relative flex-1">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -244,54 +363,56 @@ export const POSPage: React.FC<POSPageProps> = ({
               </button>
             </div>
 
-            {/* Department Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-              <button
-                onClick={() => setSelectedDeptId('ALL')}
-                className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-                  selectedDeptId === 'ALL'
-                    ? 'bg-zinc-900 text-white shadow-xs'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
-                }`}
-              >
-                All Departments ({products.length})
-              </button>
-              {departments.map((dept) => {
-                const isSelected = selectedDeptId === dept.id;
-                return (
-                  <button
-                    key={dept.id}
-                    onClick={() => setSelectedDeptId(dept.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-                      isSelected
-                        ? 'bg-zinc-900 text-white shadow-xs'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
-                    }`}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: dept.color || '#4f46e5' }}
-                    />
-                    <span>{dept.name}</span>
-                    <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
-                  </button>
-                );
-              })}
+            {/* Department Filter Pills (Strictly contained scrollbar) */}
+            <div className="w-full max-w-full min-w-0 overflow-x-auto pb-1 no-scrollbar">
+              <div className="flex items-center gap-1.5 text-xs w-max">
+                <button
+                  onClick={() => setSelectedDeptId('ALL')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
+                    selectedDeptId === 'ALL'
+                      ? 'bg-zinc-900 text-white shadow-xs'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
+                  }`}
+                >
+                  All Departments ({products.length})
+                </button>
+                {departments.map((dept) => {
+                  const isSelected = selectedDeptId === dept.id;
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => setSelectedDeptId(dept.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
+                        isSelected
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70'
+                      }`}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: dept.color || '#4f46e5' }}
+                      />
+                      <span>{dept.name}</span>
+                      <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Professional Tabular Register View */}
-          <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
+          {/* Professional Tabular Register View (100% Mobile Viewport Contained) */}
+          <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-xs overflow-hidden w-full max-w-full min-w-0">
+            <div className="w-full max-w-full overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">Product</th>
+                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4">Product</th>
                     <th className="hidden md:table-cell py-3 px-4">Barcode / SKU</th>
                     <th className="hidden sm:table-cell py-3 px-4">Department</th>
-                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right">Price</th>
-                    <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Stock</th>
-                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right">Action</th>
+                    <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Price</th>
+                    <th className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-center">Stock</th>
+                    <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -311,22 +432,26 @@ export const POSPage: React.FC<POSPageProps> = ({
                         }`}
                       >
                         {/* Product Name (with mobile barcode & department inline) */}
-                        <td className="py-2.5 sm:py-3 px-3 sm:px-4">
-                          <div className="font-semibold text-zinc-950 text-xs leading-snug">
+                        <td className="py-2.5 sm:py-3 px-2.5 sm:px-4 min-w-0 max-w-[150px] xs:max-w-none">
+                          <div className="font-semibold text-zinc-950 text-xs leading-snug line-clamp-2">
                             {p.name}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5 md:hidden">
-                            <span className="font-mono text-[10px] text-zinc-400">
+                            <span className="font-mono text-[10px] text-zinc-400 truncate max-w-[80px]">
                               {p.barcode}
                             </span>
-                            <span
-                              className="inline-block w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: p.department_color || '#4f46e5' }}
-                              title={p.department_name}
-                            />
-                            <span className="text-[10px] text-zinc-400 sm:hidden truncate max-w-[100px]">
-                              {p.department_name}
-                            </span>
+                            {p.department_name && (
+                              <>
+                                <span
+                                  className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: p.department_color || '#4f46e5' }}
+                                  title={p.department_name}
+                                />
+                                <span className="text-[10px] text-zinc-400 sm:hidden truncate max-w-[70px]">
+                                  {p.department_name}
+                                </span>
+                              </>
+                            )}
                           </div>
                           <span className="text-[11px] text-zinc-400 font-normal hidden md:inline">
                             Sold per {p.unit || 'pcs'}
@@ -356,7 +481,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                             }}
                           >
                             <span
-                              className="w-1.5 h-1.5 rounded-full"
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                               style={{ backgroundColor: p.department_color || '#4f46e5' }}
                             />
                             {p.department_name}
@@ -364,14 +489,14 @@ export const POSPage: React.FC<POSPageProps> = ({
                         </td>
 
                         {/* Unit Price */}
-                        <td className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right whitespace-nowrap">
+                        <td className="py-2.5 sm:py-3 px-2 sm:px-4 text-right whitespace-nowrap">
                           <span className="text-xs sm:text-sm font-extrabold text-zinc-950 font-mono">
                             ${Number(p.price).toFixed(2)}
                           </span>
                         </td>
 
                         {/* Stock on Hand */}
-                        <td className="py-2.5 sm:py-3 px-2 sm:px-4 text-center whitespace-nowrap">
+                        <td className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-center whitespace-nowrap">
                           <div className="inline-flex flex-col items-center">
                             <span
                               className={`px-1.5 sm:px-2 py-0.5 rounded-md font-mono text-[10px] sm:text-xs font-bold ${
@@ -398,7 +523,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                         </td>
 
                         {/* Action (+ Add to Cart) */}
-                        <td className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right whitespace-nowrap">
+                        <td className="py-2.5 sm:py-3 px-2 sm:px-4 text-right whitespace-nowrap">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -406,7 +531,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                               addToCart(p);
                             }}
                             disabled={isOutOfStock}
-                            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl shadow-2xs transition-all ${
+                            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl shadow-2xs transition-all ${
                               isOutOfStock
                                 ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
                                 : inCartCount > 0
@@ -424,15 +549,48 @@ export const POSPage: React.FC<POSPageProps> = ({
                 </tbody>
               </table>
 
-              {filteredProducts.length === 0 && (
-                <div className="p-12 text-center text-zinc-400">
+              {products.length === 0 ? (
+                <div className="p-8 sm:p-12 text-center text-zinc-500 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center mx-auto text-zinc-400">
+                    <ShoppingBag className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-900">Your Inventory Catalog is Empty</h3>
+                    <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
+                      Scan any bottle or item barcode with the camera to register it, or load sample retail beverages.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUnregisteredBarcode('');
+                        setProductModalOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-zinc-900 text-white text-xs font-semibold rounded-xl hover:bg-zinc-800 transition-all shadow-xs"
+                    >
+                      + Add New Product
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSeedBeverages}
+                      disabled={isProcessing}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold rounded-xl hover:bg-emerald-100 transition-all"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{isProcessing ? 'Adding...' : '⚡ Load Sample Bottles & Drinks'}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="p-10 text-center text-zinc-400">
                   <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
                   <p className="text-sm font-semibold text-zinc-700">No items match your search</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Try searching by barcode or select a different department.
+                    Try searching by a different barcode or select 'All Departments'.
                   </p>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -559,12 +717,12 @@ export const POSPage: React.FC<POSPageProps> = ({
         </div>
       </div>
 
-      {/* Mobile Sticky Bottom Bar */}
-      <div className="lg:hidden fixed bottom-14 md:bottom-0 inset-x-0 z-20 p-3 bg-white/95 backdrop-blur-md border-t border-zinc-200">
+      {/* Mobile & Tablet Sticky Bottom Bar */}
+      <div className="lg:hidden fixed bottom-14 md:bottom-0 left-0 md:left-64 right-0 z-20 p-3 bg-white/95 backdrop-blur-md border-t border-zinc-200 overflow-hidden">
         <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
           <button
             onClick={() => setMobileCartOpen(true)}
-            className="flex items-center gap-2 text-left"
+            className="flex items-center gap-2 text-left active:opacity-75"
           >
             <div className="relative">
               <ShoppingBag className="w-5 h-5 text-zinc-900" />
@@ -581,7 +739,7 @@ export const POSPage: React.FC<POSPageProps> = ({
           <button
             onClick={openCheckout}
             disabled={cart.length === 0}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm active:scale-98 transition-transform"
           >
             <span>Charge ${total.toFixed(2)}</span>
             <ArrowRight className="w-4 h-4" />
@@ -589,10 +747,10 @@ export const POSPage: React.FC<POSPageProps> = ({
         </div>
       </div>
 
-      {/* Mobile Cart Drawer */}
+      {/* Mobile & Tablet Cart Drawer */}
       {mobileCartOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-sm flex flex-col justify-end">
-          <div className="bg-white rounded-t-3xl border-t border-zinc-200 p-5 max-h-[80vh] flex flex-col pb-safe">
+        <div className="lg:hidden fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-sm flex flex-col justify-end md:pl-64">
+          <div className="bg-white rounded-t-3xl border-t border-zinc-200 p-5 max-h-[85vh] flex flex-col pb-safe max-w-xl w-full mx-auto">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <h3 className="text-sm font-bold text-zinc-900">Current Order ({cart.length} items)</h3>
               <button
@@ -830,6 +988,69 @@ export const POSPage: React.FC<POSPageProps> = ({
         subtitle="Point camera at product barcode"
         continuous={true}
       />
+
+      {/* Unregistered Barcode Scanned Modal */}
+      {unregisteredBarcode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-zinc-200 p-5 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
+              <BarcodeIcon className="w-6 h-6" />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                Barcode Detected
+              </span>
+              <h3 className="text-base font-bold text-zinc-900 mt-2 font-mono">
+                {unregisteredBarcode}
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                This barcode was scanned, but this bottle or product is not in your store's inventory yet.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setScannerOpen(false);
+                  setProductModalOpen(true);
+                }}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+              >
+                + Register This Product Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnregisteredBarcode(null)}
+                className="w-full py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-800"
+              >
+                Dismiss / Keep Scanning
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add / Register Product Modal */}
+      <ProductModal
+        isOpen={productModalOpen}
+        onClose={() => {
+          setProductModalOpen(false);
+          setUnregisteredBarcode(null);
+        }}
+        onSave={handleSaveNewProduct}
+        departments={departments}
+        initialBarcode={unregisteredBarcode || ''}
+      />
+
+      {/* Non-intrusive Scan Toast */}
+      {scanToast && (
+        <div className="fixed top-16 md:top-6 right-4 md:right-6 z-50 bg-zinc-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-2 border border-zinc-700 animate-in fade-in slide-in-from-top-2 duration-150">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{scanToast.text}</span>
+        </div>
+      )}
 
       {/* Printable Receipt Modal */}
       <ReceiptModal

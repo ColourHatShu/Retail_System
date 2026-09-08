@@ -145,7 +145,7 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
   };
 
   return (
-    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
+    <div className="w-full max-w-full min-w-0 px-2.5 sm:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8 overflow-x-hidden">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
@@ -267,8 +267,8 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
       </div>
 
       {/* Movement Ledger Table */}
-      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden w-full max-w-full min-w-0">
+        <div className="overflow-x-auto w-full max-w-full">
           <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>

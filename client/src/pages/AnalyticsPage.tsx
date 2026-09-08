@@ -62,7 +62,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
   };
 
   return (
-    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
+    <div className="w-full max-w-full min-w-0 px-2.5 sm:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8 overflow-x-hidden">
       {/* Header */}
       <div>
         <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2">
@@ -155,7 +155,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
       </div>
 
       {/* Recent Sales Ledger */}
-      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden w-full max-w-full min-w-0">
         <div className="p-4 border-b border-zinc-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="w-4 h-4 text-zinc-700" />
@@ -165,7 +165,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto w-full max-w-full">
           <table className="w-full min-w-[600px] text-left text-xs">
             <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>
