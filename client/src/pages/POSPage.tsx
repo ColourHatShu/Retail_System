@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Search,
   Camera,
@@ -54,6 +54,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [unregisteredBarcode, setUnregisteredBarcode] = useState<string | null>(null);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [scanToast, setScanToast] = useState<{ text: string; type: 'success' | 'warn' } | null>(null);
+  const lastPosScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
 
   // Cart calculations
   const subtotal = useMemo(() => {
@@ -132,6 +133,13 @@ export const POSPage: React.FC<POSPageProps> = ({
     const clean = barcode.trim();
     if (!clean) return;
 
+    // Debounce duplicate rapid scans of the same item within 2.5 seconds
+    const now = Date.now();
+    if (lastPosScanRef.current.code === clean && now - lastPosScanRef.current.time < 2500) {
+      return;
+    }
+    lastPosScanRef.current = { code: clean, time: now };
+
     const found = products.find((p) => p.barcode === clean);
     if (found) {
       addToCart(found);
@@ -142,6 +150,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       setTimeout(() => setScanToast(null), 3500);
     } else {
       playScanErrorSound();
+      setScannerOpen(false);
       setUnregisteredBarcode(clean);
     }
   };

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { Camera, X, Flashlight, Keyboard, AlertCircle } from 'lucide-react';
+import { Camera, X, Flashlight, Keyboard, AlertCircle, Check, Zap } from 'lucide-react';
 import { playScanSuccessSound, playScanErrorSound } from '../utils/audio';
 
 interface BarcodeScannerModalProps {
@@ -27,10 +27,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isStoppingRef = useRef(false);
+  const isScanLockedRef = useRef(false);
+  const lastScannedCodeRef = useRef<string | null>(null);
   const lastScanTimeRef = useRef(0);
+  const lockTimerRef = useRef<any>(null);
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
 
   useEffect(() => {
     if (!isOpen) {
@@ -47,6 +54,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     const scannerElementId = 'barcode-reader-view';
     setErrorMessage(null);
     setLastScanned(null);
+    setIsPaused(false);
+    setCooldownSeconds(0);
+    isScanLockedRef.current = false;
+    lastScannedCodeRef.current = null;
+    lastScanTimeRef.current = 0;
 
     const initScanner = async () => {
       try {
@@ -90,13 +102,32 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           },
           config,
           (decodedText) => {
+            const cleanCode = decodedText ? decodedText.trim() : '';
+            if (!cleanCode) return;
+
             const now = Date.now();
-            // Debounce continuous scans by 1.2s to prevent multiple triggers of same item
-            if (now - lastScanTimeRef.current < 1200 && lastScanned === decodedText) {
+
+            // 1. Guard against scans while locked in pause window
+            if (isScanLockedRef.current) {
               return;
             }
+
+            // 2. Cooldown for the SAME barcode (3.5s) to prevent adding 20+ when holding one item
+            if (lastScannedCodeRef.current === cleanCode && now - lastScanTimeRef.current < 3500) {
+              return;
+            }
+
+            // 3. General cooldown between ANY consecutive scans (1.2s)
+            if (now - lastScanTimeRef.current < 1200) {
+              return;
+            }
+
+            // Lock immediately to prevent duplicate frames from triggering
+            isScanLockedRef.current = true;
+            lastScannedCodeRef.current = cleanCode;
             lastScanTimeRef.current = now;
-            setLastScanned(decodedText);
+
+            setLastScanned(cleanCode);
             playScanSuccessSound();
 
             // Mobile vibration feedback
@@ -106,12 +137,37 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               } catch {}
             }
 
-            onScan(decodedText);
+            onScanRef.current(cleanCode);
 
             if (!continuous) {
               cleanupScanner();
               onClose();
+              return;
             }
+
+            // Continuous mode: pause scanning for 3s so the item isn't re-scanned repeatedly
+            setIsPaused(true);
+            setCooldownSeconds(3);
+
+            if (lockTimerRef.current) {
+              clearInterval(lockTimerRef.current);
+            }
+
+            let remaining = 3;
+            lockTimerRef.current = setInterval(() => {
+              remaining -= 1;
+              if (remaining <= 0) {
+                if (lockTimerRef.current) {
+                  clearInterval(lockTimerRef.current);
+                  lockTimerRef.current = null;
+                }
+                isScanLockedRef.current = false;
+                setIsPaused(false);
+                setCooldownSeconds(0);
+              } else {
+                setCooldownSeconds(remaining);
+              }
+            }, 1000);
           },
           () => {
             // scan failure callback (silent on no barcode frame)
@@ -147,6 +203,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   }, [isOpen]);
 
   const cleanupScanner = async () => {
+    if (lockTimerRef.current) {
+      clearInterval(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    isScanLockedRef.current = false;
+    lastScannedCodeRef.current = null;
+
     if (scannerRef.current && !isStoppingRef.current) {
       isStoppingRef.current = true;
       try {
@@ -164,6 +227,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   };
 
+  const handleUnlockNow = () => {
+    if (lockTimerRef.current) {
+      clearInterval(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    isScanLockedRef.current = false;
+    lastScannedCodeRef.current = null;
+    setIsPaused(false);
+    setCooldownSeconds(0);
+  };
+
   const toggleTorch = async () => {
     if (!scannerRef.current) return;
     try {
@@ -179,13 +253,29 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualCode.trim()) return;
+    const clean = manualCode.trim();
+    if (!clean) return;
+
+    lastScannedCodeRef.current = clean;
+    lastScanTimeRef.current = Date.now();
+    setLastScanned(clean);
+
     playScanSuccessSound();
-    onScan(manualCode.trim());
+    onScanRef.current(clean);
     setManualCode('');
+
     if (!continuous) {
       cleanupScanner();
       onClose();
+    } else {
+      setIsPaused(true);
+      setCooldownSeconds(2);
+      isScanLockedRef.current = true;
+      setTimeout(() => {
+        isScanLockedRef.current = false;
+        setIsPaused(false);
+        setCooldownSeconds(0);
+      }, 2000);
     }
   };
 
@@ -218,19 +308,61 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         <div className="relative bg-zinc-950 flex flex-col items-center justify-center min-h-[280px] overflow-hidden">
           <div id="barcode-reader-view" className="w-full max-h-[320px] overflow-hidden" />
 
-          {/* Scanner Overlay Line */}
+          {/* Scanner Overlay Line / Pause feedback */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-3">
-              <div className="w-[88%] max-w-[340px] h-32 sm:h-36 border-2 border-dashed border-emerald-400/90 rounded-2xl relative shadow-[0_0_15px_rgba(52,211,153,0.3)]">
-                <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
+              <div
+                className={`w-[88%] max-w-[340px] h-32 sm:h-36 border-2 rounded-2xl relative transition-all duration-300 ${
+                  isPaused
+                    ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_25px_rgba(52,211,153,0.5)] ring-4 ring-emerald-500/20'
+                    : 'border-dashed border-emerald-400/90 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                }`}
+              >
+                {!isPaused ? (
+                  <div className="absolute inset-x-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center px-2">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500 text-zinc-950 flex items-center justify-center font-bold">
+                      <Check className="w-5 h-5 stroke-[3]" />
+                    </div>
+                    <span className="text-xs font-bold text-white font-mono bg-zinc-950/80 px-2 py-0.5 rounded">
+                      {lastScanned}
+                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-300">
+                      Captured!
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="mt-2.5 flex flex-col items-center gap-1 text-center px-4">
-                <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30">
-                  Align barcode along the green line
-                </span>
-                <span className="text-[10px] text-zinc-300 bg-black/60 px-2.5 py-0.5 rounded">
-                  💡 Bottles / Cans: Hold barcode horizontally across the line or tilt to avoid glare
-                </span>
+
+              {/* Status and manual unlock button */}
+              <div className="mt-3 flex flex-col items-center gap-1.5 text-center px-4 pointer-events-auto">
+                {isPaused ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-[11px] font-semibold text-emerald-200 bg-zinc-900/95 px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>Paused ({cooldownSeconds}s) to prevent double-scan</span>
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleUnlockNow}
+                      className="px-4 py-2 bg-emerald-400 hover:bg-emerald-300 text-zinc-950 text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-current" />
+                      <span>Scan Next Item Now</span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30">
+                      Align barcode along the green line
+                    </span>
+                    <span className="text-[10px] text-zinc-300 bg-black/60 px-2.5 py-0.5 rounded">
+                      💡 Bottles / Cans: Hold barcode horizontally across the line or tilt to avoid glare
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -261,9 +393,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         {/* Last scanned banner */}
         {lastScanned && continuous && (
-          <div className="bg-emerald-50 border-y border-emerald-200 px-4 py-2 flex items-center justify-between text-xs text-emerald-800">
-            <span>Scanned: <strong className="font-mono">{lastScanned}</strong></span>
-            <span className="text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded font-medium">Ready for next</span>
+          <div className="bg-emerald-50 border-y border-emerald-200 px-4 py-2 flex items-center justify-between text-xs text-emerald-900">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${isPaused ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <span>Scanned: <strong className="font-mono text-zinc-950">{lastScanned}</strong></span>
+            </div>
+            {isPaused ? (
+              <button
+                type="button"
+                onClick={handleUnlockNow}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 transition-all active:scale-95"
+              >
+                <Zap className="w-3 h-3" />
+                <span>Resume ({cooldownSeconds}s)</span>
+              </button>
+            ) : (
+              <span className="text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded font-semibold text-emerald-800">
+                Ready for next
+              </span>
+            )}
           </div>
         )}
 

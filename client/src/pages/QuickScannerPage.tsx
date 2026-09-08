@@ -56,11 +56,31 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
   } | null>(null);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [recentLogs, setRecentLogs] = useState<RecentScanLog[]>([]);
+  const [continuousScan, setContinuousScan] = useState<boolean>(true);
+
+  // Guards against rapid duplicate frames and concurrent network requests
+  const isProcessingRef = useRef<boolean>(false);
+  const lastScanRecordRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
 
   const handleProcessScan = async (scannedBarcode: string) => {
     const code = scannedBarcode.trim();
     if (!code) return;
 
+    // 1. Guard against concurrent executions
+    if (isProcessingRef.current) {
+      console.log('Ignored concurrent scan request for:', code);
+      return;
+    }
+
+    // 2. Guard against duplicate rapid scans of the exact same barcode within 3 seconds
+    const now = Date.now();
+    if (lastScanRecordRef.current.code === code && now - lastScanRecordRef.current.time < 3000) {
+      console.log('Debounced rapid duplicate scan for barcode:', code);
+      return;
+    }
+
+    lastScanRecordRef.current = { code, time: now };
+    isProcessingRef.current = true;
     setIsProcessing(true);
     setFeedback(null);
 
@@ -139,6 +159,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
       });
     } finally {
       setIsProcessing(false);
+      isProcessingRef.current = false;
       setManualBarcode('');
     }
   };
@@ -227,6 +248,39 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
                   {num}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Camera Scanner Mode: Continuous with Pause vs Single Scan Auto-Close */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
+              Camera:
+            </span>
+            <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+              <button
+                type="button"
+                onClick={() => setContinuousScan(true)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                  continuousScan
+                    ? 'bg-white text-zinc-950 font-bold shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Camera stays open with a 3-second anti-duplicate pause between scans"
+              >
+                ⚡ Multi-Scan (Paused)
+              </button>
+              <button
+                type="button"
+                onClick={() => setContinuousScan(false)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                  !continuousScan
+                    ? 'bg-white text-zinc-950 font-bold shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Camera automatically closes after scanning one product"
+              >
+                🔒 Single (Auto-Close)
+              </button>
             </div>
           </div>
 
@@ -424,8 +478,10 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         onClose={() => setScannerModalOpen(false)}
         onScan={handleProcessScan}
         title={mode === 'IN' ? 'Scan to Restock (+)' : 'Scan to Deduct (-)'}
-        subtitle={`Adjusting stock by ${stepQuantity} unit(s)`}
-        continuous={true}
+        subtitle={`Adjusting stock by ${stepQuantity} unit(s) • ${
+          continuousScan ? 'Multi-scan with 3s anti-duplicate pause' : 'Auto-closes upon scan'
+        }`}
+        continuous={continuousScan}
       />
     </div>
   );
