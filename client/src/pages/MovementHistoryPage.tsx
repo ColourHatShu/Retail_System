@@ -145,11 +145,11 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6 space-y-6">
+    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2">
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2">
             <History className="w-5 h-5 text-zinc-900" />
             Item Movement History Ledger
           </h2>
@@ -178,8 +178,8 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
 
       {/* Summary KPI Cards */}
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+          <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
             <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
               Total Recorded Events
             </span>
@@ -189,17 +189,17 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
             <span className="text-[11px] text-zinc-400 mt-0.5 block">Audit log count</span>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+          <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
             <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
               Units Sold (POS)
             </span>
             <div className="text-xl font-bold text-rose-600 mt-1 font-mono">
               -{summary.total_sold_units.toLocaleString()}
             </div>
-            <span className="text-[11px] text-zinc-400 mt-0.5 block">Customer checkout deductions</span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 block">Customer deductions</span>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+          <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
             <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
               Total Restocked
             </span>
@@ -209,7 +209,7 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
             <span className="text-[11px] text-zinc-400 mt-0.5 block">Received into inventory</span>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+          <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
             <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
               Total Adjustments
             </span>
@@ -269,7 +269,7 @@ export const MovementHistoryPage: React.FC<MovementHistoryPageProps> = ({
       {/* Movement Ledger Table */}
       <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3 px-4">Date & Time</th>

@@ -120,9 +120,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     }
   };
 
+  const handleOpenScanner = () => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setScannerOpen(true);
+  };
+
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
         <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
@@ -193,7 +200,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 <div className="flex gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setScannerOpen(true)}
+                    onClick={handleOpenScanner}
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded-md hover:bg-indigo-50"
                   >
                     <Camera className="w-3 h-3" />

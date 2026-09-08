@@ -21,6 +21,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   continuous = false,
 }) => {
   const [manualCode, setManualCode] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -34,7 +35,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       cleanupScanner();
+      setShowManualInput(false);
       return;
+    }
+
+    // Dismiss any active virtual keyboard when scanner modal opens
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
     }
 
     const scannerElementId = 'barcode-reader-view';
@@ -164,8 +171,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
           <div>
@@ -234,27 +241,52 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </div>
         )}
 
-        {/* Manual Barcode Input Fallback */}
-        <div className="p-4 bg-zinc-50 border-t border-zinc-100">
-          <form onSubmit={handleManualSubmit} className="flex gap-2">
-            <div className="relative flex-1">
-              <Keyboard className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Or type barcode & press Enter..."
-                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 placeholder:text-zinc-400"
-                autoFocus={!isScanning}
-              />
-            </div>
+        {/* Manual Barcode Input Fallback - Collapsible to prevent mobile keyboard popups */}
+        <div className="p-3 bg-zinc-50 border-t border-zinc-100">
+          {!showManualInput ? (
             <button
-              type="submit"
-              className="px-4 py-2 text-xs font-semibold text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors shadow-sm"
+              type="button"
+              onClick={() => setShowManualInput(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold text-zinc-600 hover:text-zinc-900 bg-white hover:bg-zinc-100/80 border border-zinc-200 rounded-xl transition-colors shadow-2xs"
             >
-              Enter
+              <Keyboard className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Enter Barcode Manually</span>
             </button>
-          </form>
+          ) : (
+            <form onSubmit={handleManualSubmit} className="space-y-2 animate-in fade-in duration-150">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Keyboard className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value)}
+                    placeholder="Type barcode digits & press Enter..."
+                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 placeholder:text-zinc-400 font-mono"
+                    autoFocus={false}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-zinc-900 rounded-xl hover:bg-zinc-800 transition-colors shadow-sm"
+                >
+                  Enter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowManualInput(false)}
+                  className="px-2.5 py-2 text-xs text-zinc-500 hover:text-zinc-800 bg-zinc-200/70 hover:bg-zinc-200 rounded-xl transition-colors"
+                  title="Close manual entry"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>

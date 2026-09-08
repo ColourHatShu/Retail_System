@@ -145,9 +145,16 @@ export const POSPage: React.FC<POSPageProps> = ({
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.barcode.includes(searchQuery) ||
         (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesDept && matchesSearch;
     });
   }, [products, selectedDeptId, searchQuery]);
+
+  // Open Camera Scanner safely dismissing any virtual keyboard
+  const handleOpenScanner = () => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setScannerOpen(true);
+  };
 
   // Open Checkout Modal
   const openCheckout = () => {
@@ -207,28 +214,29 @@ export const POSPage: React.FC<POSPageProps> = ({
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6">
+    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 pb-32 sm:pb-36 lg:pb-8">
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* Main Tabular Product Register (Left / Center) */}
         <div className="flex-1 min-w-0 space-y-4">
           {/* Top Search & Filter Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-zinc-200/80 shadow-xs space-y-3">
-            <div className="flex gap-2.5">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-zinc-200/80 shadow-xs space-y-3">
+            <div className="flex gap-2 sm:gap-2.5">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Quick search by product name, barcode number, or SKU..."
-                  className="w-full pl-9 pr-3 py-2.5 text-xs sm:text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white placeholder:text-zinc-400 transition-colors"
+                  placeholder="Search product, barcode, SKU..."
+                  className="w-full pl-9 pr-3 py-2 sm:py-2.5 text-xs sm:text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white placeholder:text-zinc-400 transition-colors"
                 />
               </div>
 
               {/* Camera Scanner Trigger */}
               <button
-                onClick={() => setScannerOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all"
+                type="button"
+                onClick={handleOpenScanner}
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex-shrink-0"
               >
                 <Camera className="w-4 h-4 text-emerald-400" />
                 <span className="hidden sm:inline">Camera Scan</span>
@@ -278,12 +286,12 @@ export const POSPage: React.FC<POSPageProps> = ({
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3 px-4">Barcode / SKU</th>
-                    <th className="py-3 px-4">Product Name</th>
-                    <th className="py-3 px-4">Department</th>
-                    <th className="py-3 px-4 text-right">Unit Price</th>
-                    <th className="py-3 px-4 text-center">Stock on Hand</th>
-                    <th className="py-3 px-4 text-right">Action</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">Product</th>
+                    <th className="hidden md:table-cell py-3 px-4">Barcode / SKU</th>
+                    <th className="hidden sm:table-cell py-3 px-4">Department</th>
+                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right">Price</th>
+                    <th className="py-2.5 sm:py-3 px-2 sm:px-4 text-center">Stock</th>
+                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -302,8 +310,31 @@ export const POSPage: React.FC<POSPageProps> = ({
                             : 'hover:bg-zinc-50 active:bg-zinc-100/80'
                         }`}
                       >
-                        {/* Barcode & SKU */}
-                        <td className="py-3 px-4 whitespace-nowrap">
+                        {/* Product Name (with mobile barcode & department inline) */}
+                        <td className="py-2.5 sm:py-3 px-3 sm:px-4">
+                          <div className="font-semibold text-zinc-950 text-xs leading-snug">
+                            {p.name}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 md:hidden">
+                            <span className="font-mono text-[10px] text-zinc-400">
+                              {p.barcode}
+                            </span>
+                            <span
+                              className="inline-block w-1.5 h-1.5 rounded-full"
+                              style={{ backgroundColor: p.department_color || '#4f46e5' }}
+                              title={p.department_name}
+                            />
+                            <span className="text-[10px] text-zinc-400 sm:hidden truncate max-w-[100px]">
+                              {p.department_name}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-zinc-400 font-normal hidden md:inline">
+                            Sold per {p.unit || 'pcs'}
+                          </span>
+                        </td>
+
+                        {/* Barcode & SKU (Desktop) */}
+                        <td className="hidden md:table-cell py-3 px-4 whitespace-nowrap">
                           <div className="font-mono text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
                             <BarcodeIcon className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-700" />
                             <span>{p.barcode}</span>
@@ -315,18 +346,8 @@ export const POSPage: React.FC<POSPageProps> = ({
                           )}
                         </td>
 
-                        {/* Product Name */}
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-zinc-950 text-xs leading-snug">
-                            {p.name}
-                          </div>
-                          <span className="text-[11px] text-zinc-400 font-normal">
-                            Sold per {p.unit || 'pcs'}
-                          </span>
-                        </td>
-
-                        {/* Department Badge */}
-                        <td className="py-3 px-4 whitespace-nowrap">
+                        {/* Department Badge (Tablet & Desktop) */}
+                        <td className="hidden sm:table-cell py-3 px-4 whitespace-nowrap">
                           <span
                             className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
                             style={{
@@ -343,17 +364,17 @@ export const POSPage: React.FC<POSPageProps> = ({
                         </td>
 
                         {/* Unit Price */}
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
-                          <span className="text-sm font-extrabold text-zinc-950 font-mono">
+                        <td className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right whitespace-nowrap">
+                          <span className="text-xs sm:text-sm font-extrabold text-zinc-950 font-mono">
                             ${Number(p.price).toFixed(2)}
                           </span>
                         </td>
 
                         {/* Stock on Hand */}
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <td className="py-2.5 sm:py-3 px-2 sm:px-4 text-center whitespace-nowrap">
                           <div className="inline-flex flex-col items-center">
                             <span
-                              className={`px-2 py-0.5 rounded-md font-mono text-xs font-bold ${
+                              className={`px-1.5 sm:px-2 py-0.5 rounded-md font-mono text-[10px] sm:text-xs font-bold ${
                                 isOutOfStock
                                   ? 'bg-rose-100 text-rose-800'
                                   : isLowStock
@@ -365,19 +386,19 @@ export const POSPage: React.FC<POSPageProps> = ({
                             </span>
                             {isLowStock && (
                               <span className="text-[9px] text-amber-600 font-semibold mt-0.5">
-                                Low Stock
+                                Low
                               </span>
                             )}
                             {isOutOfStock && (
                               <span className="text-[9px] text-rose-600 font-semibold mt-0.5">
-                                Out of Stock
+                                Out
                               </span>
                             )}
                           </div>
                         </td>
 
                         {/* Action (+ Add to Cart) */}
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <td className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right whitespace-nowrap">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -385,7 +406,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                               addToCart(p);
                             }}
                             disabled={isOutOfStock}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl shadow-2xs transition-all ${
+                            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl shadow-2xs transition-all ${
                               isOutOfStock
                                 ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
                                 : inCartCount > 0
@@ -393,8 +414,8 @@ export const POSPage: React.FC<POSPageProps> = ({
                                 : 'bg-zinc-900 hover:bg-zinc-800 text-white'
                             }`}
                           >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>{inCartCount > 0 ? `In Cart (${inCartCount})` : 'Add'}</span>
+                            <Plus className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                            <span>{inCartCount > 0 ? `(${inCartCount})` : 'Add'}</span>
                           </button>
                         </td>
                       </tr>
@@ -539,7 +560,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       </div>
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="lg:hidden fixed bottom-14 inset-x-0 z-20 p-3 bg-white/95 backdrop-blur-md border-t border-zinc-200">
+      <div className="lg:hidden fixed bottom-14 md:bottom-0 inset-x-0 z-20 p-3 bg-white/95 backdrop-blur-md border-t border-zinc-200">
         <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
           <button
             onClick={() => setMobileCartOpen(true)}
@@ -571,7 +592,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       {/* Mobile Cart Drawer */}
       {mobileCartOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-sm flex flex-col justify-end">
-          <div className="bg-white rounded-t-3xl border-t border-zinc-200 p-5 max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-t-3xl border-t border-zinc-200 p-5 max-h-[80vh] flex flex-col pb-safe">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <h3 className="text-sm font-bold text-zinc-900">Current Order ({cart.length} items)</h3>
               <button
@@ -637,9 +658,9 @@ export const POSPage: React.FC<POSPageProps> = ({
 
       {/* Payment Modal */}
       {checkoutModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-zinc-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="p-4 sm:p-5 border-b border-zinc-100 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-zinc-900">Complete Payment</h3>
                 <p className="text-xs text-zinc-500">
@@ -654,7 +675,7 @@ export const POSPage: React.FC<POSPageProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
               {checkoutError && (
                 <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />

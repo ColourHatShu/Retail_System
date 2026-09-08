@@ -155,32 +155,39 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
     }
   };
 
+  const handleOpenScanner = () => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setScannerModalOpen(true);
+  };
+
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
       {/* Header */}
       <div className="text-center space-y-1">
-        <h2 className="text-xl font-bold tracking-tight text-zinc-950 flex items-center justify-center gap-2">
+        <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950 flex items-center justify-center gap-2">
           <ScanLine className="w-5 h-5 text-zinc-900" />
           Rapid Barcode Stock Adjuster
         </h2>
         <p className="text-xs text-zinc-500">
-          Point camera or trigger hardware scanner to immediately increase or decrease inventory stock
+          Point camera or trigger scanner to increase or decrease inventory stock
         </p>
       </div>
 
       {/* Mode Switcher: Stock In (+) vs Stock Out (-) */}
-      <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 max-w-md mx-auto">
         <button
           type="button"
           onClick={() => setMode('IN')}
-          className={`p-3.5 rounded-2xl border flex items-center justify-center gap-2 transition-all ${
+          className={`p-3 sm:p-3.5 rounded-2xl border flex items-center justify-center gap-1.5 sm:gap-2 transition-all min-h-[48px] ${
             mode === 'IN'
               ? 'bg-emerald-600 text-white border-emerald-600 shadow-md font-bold'
               : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50 font-semibold'
           }`}
         >
-          <PlusCircle className="w-5 h-5" />
-          <span>Stock In (+) [Restock]</span>
+          <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+          <span className="text-xs sm:text-sm">Stock In (+)</span>
         </button>
 
         <button
@@ -273,11 +280,12 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
 
           <button
             type="button"
-            onClick={() => setScannerModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all"
+            onClick={handleOpenScanner}
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex-shrink-0"
           >
             <Camera className="w-4 h-4 text-emerald-400" />
-            <span>Camera Scanner</span>
+            <span className="hidden sm:inline">Camera Scanner</span>
+            <span className="sm:hidden">Camera</span>
           </button>
         </div>
       </div>

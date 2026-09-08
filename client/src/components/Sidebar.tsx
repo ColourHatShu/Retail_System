@@ -213,8 +213,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Mobile Bottom Navigation Strip */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 pb-safe">
-        <nav className="flex items-center justify-around px-1 py-1.5">
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 pb-[env(safe-area-inset-bottom,0px)]">
+        <nav className="flex items-center justify-around px-1 py-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleSelectTab(item.id)}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all relative ${
+                className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all relative touch-manipulation active:scale-95 ${
                   isActive ? 'text-emerald-400 font-bold' : 'text-zinc-400 font-medium'
                 }`}
               >

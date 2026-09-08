@@ -62,21 +62,21 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6 space-y-6">
+    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2">
+        <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-zinc-900" />
           Sales & Department Valuation
         </h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Overview of point-of-sale transactions and departmental inventory worth
+          Overview of transactions and departmental inventory worth
         </p>
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Revenue
           </span>
@@ -86,7 +86,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
           <span className="text-[11px] text-zinc-400 mt-0.5 block">Recorded POS sales</span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Transactions
           </span>
@@ -96,28 +96,24 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
           <span className="text-[11px] text-zinc-400 mt-0.5 block">Completed receipts</span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-            Tax Collected
+            Collected Tax
           </span>
-          <div className="text-xl font-bold text-zinc-700 mt-1">
+          <div className="text-xl font-bold text-zinc-950 mt-1 font-mono">
             ${totalTax.toFixed(2)}
           </div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">State & local tax</span>
+          <span className="text-[11px] text-zinc-400 mt-0.5 block">Estimated sales tax</span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-            Payment Mix
+            Average Ticket
           </span>
-          <div className="flex items-center gap-2 text-xs font-bold text-zinc-800 mt-1.5">
-            <span>Cash: {paymentBreakdown['CASH'] || 0}</span>
-            <span className="text-zinc-300">•</span>
-            <span>Card: {paymentBreakdown['CARD'] || 0}</span>
-            <span className="text-zinc-300">•</span>
-            <span>UPI: {paymentBreakdown['UPI_QR'] || 0}</span>
+          <div className="text-xl font-bold text-emerald-600 mt-1 font-mono">
+            ${sales.length > 0 ? (totalRevenue / sales.length).toFixed(2) : '0.00'}
           </div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">Tender breakdown</span>
+          <span className="text-[11px] text-zinc-400 mt-0.5 block">Per sale average</span>
         </div>
       </div>
 
@@ -170,7 +166,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ departments }) => 
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[600px] text-left text-xs">
             <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3.5 pl-4 pr-3">Receipt #</th>

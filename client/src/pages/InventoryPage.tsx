@@ -115,39 +115,39 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6 space-y-6">
+    <div className="w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-24 md:pb-8">
       {/* Top Header & Stat Tiles */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-950">
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-zinc-950">
             Department-Wise Inventory
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Manage your retail catalog, stock levels, and barcode identifiers
+            Manage your catalog, stock levels, and barcode identifiers
           </p>
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={() => setExcelImportOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl shadow-xs transition-colors"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            Import via Excel
+            <span className="hidden xs:inline">Import via</span> Excel
           </button>
           <button
             onClick={() => setDeptModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-xl shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-xl shadow-xs transition-colors"
           >
             <FolderTree className="w-4 h-4 text-zinc-600" />
-            Departments ({departments.length})
+            Depts ({departments.length})
           </button>
           <button
             onClick={() => {
               setEditingProduct(null);
               setProductModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl shadow-sm transition-all"
           >
             <Plus className="w-4 h-4" />
             Add Product
@@ -156,8 +156,8 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Catalog Items
           </span>
@@ -167,7 +167,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           </span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Stock On Hand
           </span>
@@ -177,7 +177,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           <span className="text-[11px] text-zinc-400 mt-0.5 block">Individual units</span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Inventory Valuation
           </span>
@@ -187,7 +187,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           <span className="text-[11px] text-zinc-400 mt-0.5 block">At retail price</span>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
+        <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Stock Alerts
           </span>
@@ -272,7 +272,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       {/* Inventory Products Table */}
       <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[640px] text-left text-xs">
             <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3.5 pl-4 pr-3">Product / Barcode</th>
