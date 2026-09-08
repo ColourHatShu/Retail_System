@@ -1,9 +1,8 @@
 # Netlify Configuration for Nexus POS & Inventory Management System
 
 [build]
-  base = ""
+  command = "cd client && npm install && npm run build"
   publish = "client/dist"
-  command = "npm run build:client"
 
 [build.environment]
   NODE_VERSION = "20"
