@@ -42,20 +42,41 @@ A minimalistic, professional, and responsive Point of Sale (POS) and Inventory M
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, `html5-qrcode`, `jsbarcode`, `canvas-confetti`.
-- **Backend**: Node.js, Express, SQLite (`better-sqlite3`), ACID transactions.
+- **Backend**: Node.js, Express 5, PostgreSQL (`pg`), Zod validation. The Express server is the only thing that talks to the database; the browser never holds database credentials.
+
+### Design rules worth knowing
+
+- **Money is integer cents in the database and in every calculation.** Decimal numbers (`19.99`) exist only in the JSON API. Tax rates are stored in basis points.
+- **The server is the authority on prices.** Checkout ignores any price or total sent by the client, recomputes everything from the catalogue, and refuses with `PRICE_CHANGED` if the register's displayed total is stale.
+- **Stock only changes through the ledger.** Every change to a product's quantity writes a `stock_movements` row with the balance before and after.
+- **Schema changes are migrations** in `server/src/migrations.ts`, applied automatically at server start and tracked in `schema_migrations`.
+- **Errors are one envelope**: `{ success: false, code, error, details? }`.
 
 ---
 
 ## Quick Start Guide
 
-### 1. Start Both Backend & Frontend
-From the root directory (`c:\Code\Retail system`):
+### 1. Configure the database
+Copy `server/.env.example` to `server/.env` and set `DATABASE_URL` to your Postgres connection string (Supabase: Project Settings → Database → Connection string, URI). Migrations run automatically on first start, including upgrading a database created by the earlier Supabase-only version.
+
+### 2. Start Both Backend & Frontend
+From the repository root:
 ```bash
+npm install
 npm run dev
 ```
 - **Web App**: `http://localhost:5173`
 - **Mobile Access**: `http://<YOUR-LOCAL-IP>:5173` (e.g. `http://192.168.1.5:5173`)
 - **API Server**: `http://localhost:5000`
+
+### 3. Run the tests
+```bash
+cd server && npm test
+```
+Tests run against the database in `server/.env` (or `TEST_DATABASE_URL`), each file inside its own throwaway schema that is dropped afterwards. Without a database configured, the database-backed suites are skipped with a warning.
+
+### Deploying
+The client is static (Netlify config included); set `VITE_API_BASE` to the public URL of the Express server. The server needs a Node host (Render, Railway, Fly, a VPS) with `DATABASE_URL` set.
 
 ---
 

@@ -1,3 +1,15 @@
+export type Role = 'OWNER' | 'MANAGER' | 'CASHIER';
+
+export interface User {
+  id: number;
+  username: string;
+  display_name: string;
+  role: Role;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
 export interface Department {
   id: number;
   name: string;
@@ -49,6 +61,8 @@ export interface StockMovement {
   customer_phone?: string;
   payment_method?: string;
   sale_id?: number;
+  user_id?: number | null;
+  user_name?: string | null;
   department_id?: number;
   department_name?: string;
   department_code?: string;
@@ -74,14 +88,67 @@ export interface Sale {
   change_due: number;
   customer_name?: string;
   customer_phone?: string;
+  cashier_id?: number | null;
+  cashier_name?: string | null;
+  status?: SaleStatus;
+  refunded_total?: number;
   created_at: string;
   items?: Array<{
+    id: number;
     product_id: number;
     name: string;
     barcode: string;
     quantity: number;
+    returned_quantity?: number;
     unit_price: number;
     total_price: number;
     unit?: string;
   }>;
+}
+
+export type SaleStatus = 'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'VOIDED';
+
+export type ReturnCondition = 'RESALABLE' | 'DAMAGED' | 'EXPIRED' | 'DEFECTIVE' | 'OTHER';
+
+export interface ReturnRecord {
+  id: number;
+  return_number: string;
+  kind: 'RETURN' | 'VOID';
+  sale_id: number;
+  receipt_number?: string;
+  refund: number;
+  refund_method: 'CASH' | 'CARD' | 'UPI_QR';
+  reason: string | null;
+  processed_by: number | null;
+  processed_by_name: string | null;
+  created_at: string;
+  items?: Array<{
+    sale_item_id: number;
+    product_id: number | null;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    refund: number;
+    restock: boolean;
+    condition: string | null;
+  }>;
+}
+
+export interface ReturnLineInput {
+  sale_item_id: number;
+  quantity: number;
+  restock: boolean;
+  condition: ReturnCondition;
+}
+
+export interface ReturnQuote {
+  sale: Sale;
+  lines: Array<{ sale_item_id: number; name: string; quantity: number; restock: boolean; condition: string; refund: number }>;
+  refund: number;
+  refund_method: 'CASH' | 'CARD' | 'UPI_QR';
+  completes_sale: boolean;
+  requires_manager: boolean;
+  window_closed: boolean;
+  allowed: boolean;
+  blocked_reason: string | null;
 }

@@ -8,18 +8,31 @@ import {
   Store,
   Menu,
   X,
-  Zap,
-  Radio,
   Clock,
   Smartphone,
   Download,
+  Users,
+  LogOut,
+  Undo2,
 } from 'lucide-react';
+import { Role, User } from '../types';
 
-export type ActiveTab = 'pos' | 'inventory' | 'scanner' | 'history' | 'analytics';
+export type ActiveTab = 'pos' | 'returns' | 'inventory' | 'scanner' | 'history' | 'analytics' | 'users';
+
+/** Which tabs each role may open. Enforced again by the server on every request. */
+export const TABS_FOR_ROLE: Record<Role, ActiveTab[]> = {
+  CASHIER: ['pos', 'returns'],
+  MANAGER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics'],
+  OWNER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics', 'users'],
+};
+
+const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', CASHIER: 'Cashier' };
 
 interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  user: User;
+  onLogout: () => void;
   cartCount?: number;
   onOpenInstallModal?: () => void;
   isStandalone?: boolean;
@@ -28,51 +41,34 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
+  user,
+  onLogout,
   cartCount = 0,
   onOpenInstallModal,
   isStandalone = false,
 }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  const navItems: Array<{
+  const allowed = TABS_FOR_ROLE[user.role];
+
+  interface NavItem {
     id: ActiveTab;
     label: string;
     description: string;
     icon: React.FC<{ className?: string }>;
     badge?: number;
-  }> = [
-    {
-      id: 'pos',
-      label: 'POS Register',
-      description: 'Checkout & cash register',
-      icon: ShoppingCart,
-      badge: cartCount,
-    },
-    {
-      id: 'inventory',
-      label: 'Inventory',
-      description: 'Department products & stock',
-      icon: Package,
-    },
-    {
-      id: 'scanner',
-      label: 'Stock Scan (+/-)',
-      description: 'Rapid barcode stock in/out',
-      icon: ScanLine,
-    },
-    {
-      id: 'history',
-      label: 'Movement History',
-      description: 'Customer & receipt audit ledger',
-      icon: History,
-    },
-    {
-      id: 'analytics',
-      label: 'Sales & Audit',
-      description: 'Revenue & tender reports',
-      icon: BarChart3,
-    },
+  }
+
+  const allNavItems: NavItem[] = [
+    { id: 'pos', label: 'POS Register', description: 'Checkout & cash register', icon: ShoppingCart, badge: cartCount },
+    { id: 'returns', label: 'Returns & Refunds', description: 'Refund against a receipt', icon: Undo2 },
+    { id: 'inventory', label: 'Inventory', description: 'Department products & stock', icon: Package },
+    { id: 'scanner', label: 'Stock Scan (+/-)', description: 'Rapid barcode stock in/out', icon: ScanLine },
+    { id: 'history', label: 'Movement History', description: 'Customer & receipt audit ledger', icon: History },
+    { id: 'analytics', label: 'Sales & Audit', description: 'Revenue & tender reports', icon: BarChart3 },
+    { id: 'users', label: 'Staff & Access', description: 'Accounts and roles', icon: Users },
   ];
+  const navItems = allNavItems.filter((item) => allowed.includes(item.id));
 
   const handleSelectTab = (id: ActiveTab) => {
     setActiveTab(id);
@@ -90,9 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-extrabold tracking-tight text-white uppercase">
-                  NEXUS POS
-                </span>
+                <span className="text-sm font-extrabold tracking-tight text-white uppercase">NEXUS POS</span>
                 <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
                   LIVE
                 </span>
@@ -149,23 +143,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Footer Info (Hardware scanner status & Store terminal stats) */}
+      {/* Bottom Footer: signed-in user, install, terminal info */}
       <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40 space-y-2.5">
-        {/* Hardware scanner wedge status */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px]">
-          <div className="flex items-center gap-2 text-zinc-300 font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span>USB/BT Scanner</span>
+        <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-white truncate">{user.display_name}</div>
+            <div className="text-[10px] text-zinc-400 font-mono truncate">
+              {user.username} • {ROLE_LABELS[user.role]}
+            </div>
           </div>
-          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">
-            READY
-          </span>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-700/60"
+            title="Sign out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sign out
+          </button>
         </div>
 
-        {/* Install Mobile App Button */}
         {onOpenInstallModal && (
           <button
             type="button"
@@ -185,9 +182,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
 
-        {/* Terminal Info */}
         <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono px-1">
-          <span>v2.1.0 • PWA Ready</span>
+          <span>v3.0.0 • PWA Ready</span>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-zinc-400" />
             Active
@@ -213,9 +209,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-xs font-bold uppercase tracking-wider text-white">
-            NEXUS POS
-          </span>
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-white">NEXUS POS</span>
+            <span className="block text-[10px] text-zinc-400 leading-tight">{user.display_name}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -229,9 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
           {cartCount > 0 && (
-            <span className="px-2 py-0.5 bg-emerald-500 text-zinc-950 text-[10px] font-bold rounded-full">
-              {cartCount}
-            </span>
+            <span className="px-2 py-0.5 bg-emerald-500 text-zinc-950 text-[10px] font-bold rounded-full">{cartCount}</span>
           )}
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         </div>

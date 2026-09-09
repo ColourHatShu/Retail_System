@@ -14,7 +14,8 @@
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm install && npm run build",
     "build": "npm run build:client",
-    "test:server": "cd server && npx tsx src/test-runner.ts"
+    "test:server": "cd server && npm test",
+    "typecheck:server": "cd server && npm run typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

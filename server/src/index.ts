@@ -1,39 +1,27 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { initDatabase } from './db';
-import { departmentRouter } from './routes/departments';
-import { productRouter } from './routes/products';
-import { inventoryRouter } from './routes/inventory';
-import { salesRouter } from './routes/sales';
-import { movementRouter } from './routes/movements';
+import 'dotenv/config';
+import { createApp } from './app';
+import { closePool, initDatabase } from './db';
 
-dotenv.config();
+const PORT = Number(process.env.PORT) || 5000;
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+async function main(): Promise<void> {
+  await initDatabase();
 
-app.use(cors());
-app.use(express.json());
-
-// Initialize SQLite Database schema & initial data
-initDatabase();
-
-// Mount API routes
-app.use('/api/departments', departmentRouter);
-app.use('/api/products', productRouter);
-app.use('/api/inventory', inventoryRouter);
-app.use('/api/sales', salesRouter);
-app.use('/api/movements', movementRouter);
-
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    system: 'Retail POS & Inventory System',
-    timestamp: new Date().toISOString()
+  const server = createApp().listen(PORT, () => {
+    console.log(`[Retail POS Server] running on http://localhost:${PORT}`);
   });
-});
 
-app.listen(PORT, () => {
-  console.log(`[Retail POS Server] running on http://localhost:${PORT}`);
+  const shutdown = (signal: string) => {
+    console.log(`[Retail POS Server] ${signal} received, shutting down`);
+    server.close(() => {
+      closePool().finally(() => process.exit(0));
+    });
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((err: Error) => {
+  console.error('[Retail POS Server] failed to start:', err.message);
+  process.exit(1);
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   Camera,
@@ -17,7 +17,7 @@ import {
   PackagePlus,
 } from 'lucide-react';
 import { Department, Product, CartItem, Sale } from '../types';
-import { api } from '../utils/api';
+import { api, ApiError } from '../utils/api';
 import { playScanSuccessSound, playPaymentSuccessSound, playScanErrorSound } from '../utils/audio';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -43,7 +43,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI_QR' | 'SPLIT'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI_QR'>('CASH');
   const [amountTendered, setAmountTendered] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -61,9 +61,48 @@ export const POSPage: React.FC<POSPageProps> = ({
     return cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
   }, [cart]);
 
-  const taxRate = 5.0; // 5% default tax
-  const taxAmount = useMemo(() => (subtotal * taxRate) / 100, [subtotal]);
-  const total = useMemo(() => subtotal + taxAmount, [subtotal, taxAmount]);
+  // Tax rate comes from store settings; the server is the authority and will
+  // refuse a checkout whose displayed total no longer matches its own maths.
+  const [taxRate, setTaxRate] = useState<number>(5);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSettings()
+      .then((s) => {
+        if (!cancelled) setTaxRate(s.tax_rate_percent);
+      })
+      .catch((err) => console.warn('Could not load store settings, using default tax rate', err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Mirror the server's integer-cent arithmetic so the displayed total is the
+  // one the server will accept: round the subtotal to cents, tax on that.
+  const taxAmount = useMemo(() => {
+    const subtotalCents = Math.round(subtotal * 100);
+    return Math.round((subtotalCents * taxRate) / 100) / 100;
+  }, [subtotal, taxRate]);
+  const total = useMemo(() => Math.round((subtotal + taxAmount) * 100) / 100, [subtotal, taxAmount]);
+
+  // Keep cart prices in step with the catalogue. When products refresh (after
+  // a PRICE_CHANGED refusal, an edit, or another device's change), re-price
+  // the cart lines so the register never shows a stale amount.
+  useEffect(() => {
+    setCart((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const fresh = products.find((p) => p.id === item.product.id);
+        if (!fresh) return item;
+        if (fresh.price !== item.unit_price || fresh.stock_quantity !== item.product.stock_quantity) {
+          changed = true;
+          return { ...item, product: fresh, unit_price: fresh.price };
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, [products, setCart]);
 
   const changeDue = useMemo(() => {
     const tendered = parseFloat(amountTendered);
@@ -319,6 +358,7 @@ export const POSPage: React.FC<POSPageProps> = ({
         tax_amount: taxAmount,
         discount: 0,
         total,
+        expected_total: total,
         payment_method: paymentMethod,
         amount_paid: paymentMethod === 'CASH' ? tenderedNum : total,
         customer_name: customerName.trim() || 'Walk-in Customer',
@@ -335,8 +375,21 @@ export const POSPage: React.FC<POSPageProps> = ({
       // Refresh product stock and movements
       await refreshData();
     } catch (err: any) {
-      setCheckoutError(err.message || 'Checkout failed. Please review stock availability.');
       playScanErrorSound();
+      if (err instanceof ApiError && (err.code === 'PRICE_CHANGED' || err.code === 'INSUFFICIENT_STOCK')) {
+        // Pull the current catalogue; the cart re-prices itself via the
+        // products effect above, and the cashier confirms the new total.
+        setCheckoutError(`${err.message} The order has been updated with current prices and stock.`);
+        try {
+          await refreshData();
+          const settings = await api.getSettings();
+          setTaxRate(settings.tax_rate_percent);
+        } catch (refreshErr) {
+          console.warn('Refresh after checkout conflict failed', refreshErr);
+        }
+        return;
+      }
+      setCheckoutError(err.message || 'Checkout failed. Please review stock availability.');
     } finally {
       setIsProcessing(false);
     }

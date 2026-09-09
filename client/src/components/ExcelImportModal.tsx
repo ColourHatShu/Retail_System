@@ -50,6 +50,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     inserted_count: number;
     updated_count: number;
     created_departments: Department[];
+    skipped?: Array<{ row: number; reason: string }>;
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -260,6 +261,21 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {importResult.skipped && importResult.skipped.length > 0 && (
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-left">
+                  <span className="text-[10px] uppercase font-bold text-amber-800 block mb-1">
+                    Skipped Rows ({importResult.skipped.length}) — fix these in the sheet and re-import:
+                  </span>
+                  <ul className="text-xs text-amber-900 space-y-0.5 max-h-32 overflow-y-auto">
+                    {importResult.skipped.map((s) => (
+                      <li key={s.row}>
+                        Row {s.row}: {s.reason}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
