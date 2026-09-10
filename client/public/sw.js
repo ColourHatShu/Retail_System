@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexus-pos-v3';
+const CACHE_NAME = 'nexus-pos-v4';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -46,6 +46,28 @@ self.addEventListener('fetch', (event) => {
   // so without this the cache would serve stale stock, stale prices, and one
   // cashier's /api/auth/me to the next cashier on a shared till.
   if (url.pathname.startsWith('/api/')) return;
+
+  // The page shell is always fetched fresh. index.html names a content-hashed
+  // JavaScript bundle, so a copy cached before a deploy points at the previous
+  // bundle — which boots nothing and shows a blank white screen with no error
+  // in the console. Cache it only as an offline fallback, never as the answer.
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          return (await cache.match(event.request)) || (await cache.match('/index.html'));
+        }),
+    );
+    return;
+  }
 
   // Stale-while-revalidate for local static assets
   event.respondWith(

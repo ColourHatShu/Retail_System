@@ -107,6 +107,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   });
 
   useEffect(() => {
+    // Only reset while the dialog is actually open. The parent sets
+    // initialBarcode the moment a scan misses — before the user has agreed to
+    // register anything — so without this the effect ran twice: once on the
+    // closed dialog (firing a lookup), then again on open, which wiped the
+    // autofilled name and fired the same lookup a second time.
+    if (!isOpen) return;
+
     if (product) {
       setDepartmentId(product.department_id);
       setName(product.name);

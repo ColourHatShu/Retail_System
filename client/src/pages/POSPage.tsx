@@ -50,7 +50,12 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  // Two separate concerns that used to share one piece of state: the barcode
+  // itself (which prefills the Add Product form) and whether the "Barcode
+  // Detected" prompt is on screen. Clearing the barcode to close the prompt
+  // would have emptied the form, so the prompt used to stay up behind it.
   const [unregisteredBarcode, setUnregisteredBarcode] = useState<string | null>(null);
+  const [showUnregisteredPrompt, setShowUnregisteredPrompt] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [scanToast, setScanToast] = useState<{ text: string; type: 'success' | 'warn' } | null>(null);
   const lastPosScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
@@ -190,6 +195,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       playScanErrorSound();
       setScannerOpen(false);
       setUnregisteredBarcode(clean);
+      setShowUnregisteredPrompt(true);
     }
   };
 
@@ -203,6 +209,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       const created = await api.createProduct(productData);
       await refreshData();
       setProductModalOpen(false);
+      setShowUnregisteredPrompt(false);
       setUnregisteredBarcode(null);
       // Automatically add newly registered product to cart
       addToCart(created);
@@ -1040,7 +1047,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       />
 
       {/* Unregistered Barcode Scanned Modal */}
-      {unregisteredBarcode && (
+      {showUnregisteredPrompt && unregisteredBarcode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-zinc-200 p-5 space-y-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
@@ -1064,6 +1071,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 type="button"
                 onClick={() => {
                   setScannerOpen(false);
+                  setShowUnregisteredPrompt(false);
                   setProductModalOpen(true);
                 }}
                 className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
@@ -1072,7 +1080,10 @@ export const POSPage: React.FC<POSPageProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setUnregisteredBarcode(null)}
+                onClick={() => {
+                  setShowUnregisteredPrompt(false);
+                  setUnregisteredBarcode(null);
+                }}
                 className="w-full py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-800"
               >
                 Dismiss / Keep Scanning
@@ -1087,6 +1098,7 @@ export const POSPage: React.FC<POSPageProps> = ({
         isOpen={productModalOpen}
         onClose={() => {
           setProductModalOpen(false);
+          setShowUnregisteredPrompt(false);
           setUnregisteredBarcode(null);
         }}
         onSave={handleSaveNewProduct}
