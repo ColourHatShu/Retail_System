@@ -284,6 +284,43 @@ const migrations: Migration[] = [
       ALTER TABLE return_items ENABLE ROW LEVEL SECURITY;
     `,
   },
+  {
+    version: 7,
+    name: 'barcode_lookup_cache',
+    sql: `
+      -- Answers from the external product registries, so a barcode is fetched
+      -- once and never again. Misses are cached too, with a shorter life, so a
+      -- shop full of unlisted stock does not re-query the registries on every scan.
+      CREATE TABLE IF NOT EXISTS barcode_lookups (
+        barcode      TEXT PRIMARY KEY,
+        found        BOOLEAN NOT NULL,
+        name         TEXT,
+        brand        TEXT,
+        unit         TEXT,
+        category     TEXT,
+        source       TEXT,
+        looked_up_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_barcode_lookups_looked_up ON barcode_lookups(looked_up_at);
+
+      ALTER TABLE barcode_lookups ENABLE ROW LEVEL SECURITY;
+    `,
+  },
+  {
+    version: 8,
+    name: 'archive_products',
+    sql: `
+      -- A product that has been sold can never be deleted: sale_items.product_id
+      -- is ON DELETE RESTRICT, which is what stops a receipt line pointing at
+      -- nothing. Archiving is the way to retire such a product — it leaves the
+      -- catalogue and the register but keeps every receipt it appears on intact.
+      -- Staff already work this way (users.is_active); products now match.
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+      -- Almost every read wants the active catalogue only.
+      CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active) WHERE is_active;
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version;

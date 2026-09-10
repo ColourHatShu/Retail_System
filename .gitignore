@@ -29,6 +29,9 @@ server/retail_pos.db*
 .DS_Store
 Thumbs.db
 
+# Firebase CLI deploy cache
+.firebase/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

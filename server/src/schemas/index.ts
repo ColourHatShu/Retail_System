@@ -62,14 +62,23 @@ export const productCreate = z.object({
 });
 export type ProductCreate = z.infer<typeof productCreate>;
 
-/** Stock is intentionally NOT editable here; it only changes through movements. */
-export const productUpdate = productCreate.omit({ stock_quantity: true }).partial();
+/**
+ * Stock is intentionally NOT editable here; it only changes through movements.
+ * is_active is update-only — a product is never created archived — and is how a
+ * sold product is retired, since deleting one would orphan its receipt lines.
+ */
+export const productUpdate = productCreate
+  .omit({ stock_quantity: true })
+  .partial()
+  .extend({ is_active: z.boolean().optional() });
 export type ProductUpdate = z.infer<typeof productUpdate>;
 
 export const productListQuery = z.object({
   department_id: optionalId,
   search: optionalText(100),
   low_stock: z.enum(['true', 'false']).optional(),
+  /** Archived products are hidden unless asked for explicitly. */
+  include_archived: z.enum(['true', 'false']).optional(),
 });
 export type ProductListQuery = z.infer<typeof productListQuery>;
 

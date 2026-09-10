@@ -28,6 +28,7 @@ export function serializeProduct(r: ProductRow): Product {
     min_stock_level: r.min_stock_level,
     unit: r.unit,
     image_url: r.image_url,
+    is_active: r.is_active,
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -68,6 +69,10 @@ export async function listProducts(q: ProductListQuery, db: Queryable = getPool(
   const where: string[] = [];
   const params: unknown[] = [];
 
+  // Archived products stay out of the catalogue and the register by default.
+  if (q.include_archived !== 'true') {
+    where.push('p.is_active');
+  }
   if (q.department_id !== undefined) {
     params.push(q.department_id);
     where.push(`p.department_id = $${params.length}`);
@@ -167,6 +172,7 @@ export async function updateProduct(id: number, input: ProductUpdate): Promise<P
     if (input.min_stock_level !== undefined) assign('min_stock_level', input.min_stock_level);
     if (input.unit !== undefined) assign('unit', input.unit);
     if (input.image_url !== undefined) assign('image_url', input.image_url);
+    if (input.is_active !== undefined) assign('is_active', input.is_active);
 
     if (sets.length > 0) {
       sets.push('updated_at = now()');
@@ -179,8 +185,10 @@ export async function updateProduct(id: number, input: ProductUpdate): Promise<P
 }
 
 /**
- * Deleting a product that appears on a sale is refused by the sale_items
- * foreign key (surfaced as 409 IN_USE) so historical receipts stay intact.
+ * Only ever removes a product with no history at all. One that appears on a sale
+ * or a refund is refused by the sale_items / return_items foreign keys, surfaced
+ * as 409 HAS_HISTORY, so receipts keep pointing at something real. Retire those
+ * by archiving instead: PUT /api/products/:id with { is_active: false }.
  */
 export async function deleteProduct(id: number): Promise<void> {
   const deleted = await row<{ id: number }>(getPool(), 'DELETE FROM products WHERE id = $1 RETURNING id', [id]);

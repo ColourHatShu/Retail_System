@@ -96,13 +96,36 @@ describe.skipIf(!hasDatabase)('products, departments, settings, errors', () => {
       expect(sale.status).toBe(201);
       const refuse = await api.delete(`/api/products/${sold.body.data.id}`);
       expect(refuse.status).toBe(409);
-      expect(refuse.body.code).toBe('IN_USE');
+      // Distinct from IN_USE: a sold product has receipts behind it, so the
+      // answer is "archive it", not "try again". The UI keys its Archive
+      // affordance off this code.
+      expect(refuse.body.code).toBe('HAS_HISTORY');
+      expect(refuse.body.error).toMatch(/archive/i);
+      expect(refuse.body.details).toEqual({ referencedFrom: 'sale_items' });
 
       const fresh = await api.post('/api/products').send({ barcode: 'P-6', name: 'Fresh', department_id: deptId, price: 1 });
       const del = await api.delete(`/api/products/${fresh.body.data.id}`);
       expect(del.status).toBe(200);
       const gone = await api.get(`/api/products/${fresh.body.data.id}`);
       expect(gone.status).toBe(404);
+
+      // The sold product cannot be deleted, but it can be retired by archiving.
+      const soldId = sold.body.data.id;
+      const archived = await api.put(`/api/products/${soldId}`).send({ is_active: false });
+      expect(archived.status).toBe(200);
+      expect(archived.body.data.is_active).toBe(false);
+
+      // Gone from the catalogue and the register...
+      const catalogue = await api.get('/api/products');
+      expect(catalogue.body.data.map((p: { id: number }) => p.id)).not.toContain(soldId);
+
+      // ...but still reachable when asked for, and its receipts are untouched.
+      const withArchived = await api.get('/api/products?include_archived=true');
+      expect(withArchived.body.data.map((p: { id: number }) => p.id)).toContain(soldId);
+      expect((await api.get(`/api/products/${soldId}`)).status).toBe(200);
+
+      const restored = await api.put(`/api/products/${soldId}`).send({ is_active: true });
+      expect(restored.body.data.is_active).toBe(true);
     });
   });
 

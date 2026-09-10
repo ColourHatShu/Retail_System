@@ -31,6 +31,20 @@ const UNIQUE_MESSAGES: Record<string, string> = {
   'users.username': 'A user with this username already exists',
 };
 
+/**
+ * Keyed by the table still holding the reference, which Postgres names in
+ * err.detail. Says what is protecting the record and what to do instead.
+ */
+const FK_MESSAGES: Record<string, string> = {
+  sale_items:
+    'This product has been sold, so deleting it would leave receipts pointing at nothing. Archive it instead — it disappears from the register and the catalogue, and every receipt it appears on stays intact.',
+  return_items:
+    'This product appears on a refund, so deleting it would break that record. Archive it instead to take it off the register while keeping its history.',
+  products: 'This department still has products in it. Move or archive those products first.',
+  stock_movements: 'This record still has stock history attached to it.',
+  sales: 'This record is still attached to a completed sale.',
+};
+
 const CONNECTION_ERROR_CODES = new Set([
   'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN',
   '28P01', // invalid_password
@@ -72,12 +86,19 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
-  // Postgres foreign_key_violation
+  // Postgres foreign_key_violation. On a RESTRICT-ed delete the detail reads
+  // 'Key (id)=(15) is still referenced from table "sale_items".', which names
+  // what is actually protecting the row — far more useful than "other data".
   if (code === '23503') {
+    const referencedFrom = /is still referenced from table "([^"]+)"/.exec(String(err.detail ?? ''))?.[1];
+    const hasHistory = referencedFrom === 'sale_items' || referencedFrom === 'return_items';
     res.status(409).json({
       success: false,
-      code: 'IN_USE',
-      error: 'This record is referenced by other data and cannot be changed',
+      code: hasHistory ? 'HAS_HISTORY' : 'IN_USE',
+      error:
+        (referencedFrom && FK_MESSAGES[referencedFrom]) ||
+        'Something else in the system still refers to this record, so it cannot be deleted',
+      ...(referencedFrom ? { details: { referencedFrom } } : {}),
     });
     return;
   }

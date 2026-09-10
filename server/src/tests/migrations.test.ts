@@ -130,8 +130,8 @@ describe.skipIf(!hasDatabase)('migrations', { timeout: 120_000 }, () => {
       "SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity ORDER BY relname",
     );
     expect(rls.rows.map((r) => r.relname)).toEqual([
-      'departments', 'products', 'return_items', 'returns', 'sale_items', 'sales', 'sequences', 'sessions', 'settings',
-      'stock_movements', 'users',
+      'barcode_lookups', 'departments', 'products', 'return_items', 'returns', 'sale_items', 'sales', 'sequences',
+      'sessions', 'settings', 'stock_movements', 'users',
     ]);
 
     // Actor columns exist and are nullable so legacy rows survive.

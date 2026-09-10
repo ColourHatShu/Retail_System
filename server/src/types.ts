@@ -80,6 +80,7 @@ export interface ProductRow {
   min_stock_level: number;
   unit: string;
   image_url: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
   department_name?: string;
@@ -102,6 +103,8 @@ export interface Product {
   min_stock_level: number;
   unit: string;
   image_url: string | null;
+  /** Archived products keep their receipts but leave the catalogue and register. */
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

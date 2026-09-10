@@ -36,6 +36,8 @@ export interface Product {
   min_stock_level: number;
   unit: string;
   image_url?: string;
+  /** Archived products keep their receipts but leave the catalogue and register. */
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }

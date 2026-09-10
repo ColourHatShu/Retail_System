@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { MANAGER_UP, actor, requireRole } from '../lib/authz';
 import { input, validate } from '../lib/validate';
 import * as s from '../schemas';
+import * as lookup from '../services/lookup.service';
 import * as products from '../services/products.service';
 
 /** Mounted behind requireAuth. Reads: any role. Writes: manager or owner. */
@@ -15,6 +16,17 @@ productRouter.get('/', validate({ query: s.productListQuery }), async (_req, res
 productRouter.get('/barcode/:barcode', validate({ params: s.barcodeParam }), async (_req, res) => {
   const { barcode } = input<{ barcode: string }>(res, 'params');
   res.json({ success: true, data: await products.getProductByBarcode(barcode) });
+});
+
+/**
+ * Enriches an unknown barcode from the public product registries, so adding a
+ * product does not mean typing its name by hand. Answers are cached in Postgres.
+ * Server-side because UPCitemdb — the registry with the broadest non-food
+ * coverage — refuses cross-origin browser requests. Also declared before '/:id'.
+ */
+productRouter.get('/lookup/:barcode', validate({ params: s.barcodeParam }), async (_req, res) => {
+  const { barcode } = input<{ barcode: string }>(res, 'params');
+  res.json({ success: true, data: await lookup.lookupBarcode(barcode) });
 });
 
 productRouter.get('/:id', validate({ params: s.idParam }), async (_req, res) => {

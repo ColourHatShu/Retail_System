@@ -15,7 +15,7 @@ import {
   Package,
 } from 'lucide-react';
 import { Department, Product } from '../types';
-import { api } from '../utils/api';
+import { api, ApiError } from '../utils/api';
 import { ProductModal } from '../components/ProductModal';
 import { DepartmentModal } from '../components/DepartmentModal';
 import { BarcodeLabelModal } from '../components/BarcodeLabelModal';
@@ -100,8 +100,23 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
     try {
       await api.deleteProduct(id);
       await refreshData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete product');
+    } catch (err) {
+      // A product that has been sold cannot be deleted — its receipt lines would
+      // be left pointing at nothing. Offer what the user actually wants instead
+      // of leaving them at a dead end.
+      if (err instanceof ApiError && err.code === 'HAS_HISTORY') {
+        const archive = confirm(
+          `"${name}" has already been sold, so it cannot be deleted — the receipts it appears on would be left pointing at nothing.\n\n` +
+            `Archive it instead?\n\n` +
+            `It disappears from the register and this list, but every receipt, refund and stock record keeps working.`,
+        );
+        if (archive) {
+          await api.archiveProduct(id);
+          await refreshData();
+        }
+        return;
+      }
+      alert(err instanceof Error ? err.message : 'Failed to delete product');
     }
   };
 

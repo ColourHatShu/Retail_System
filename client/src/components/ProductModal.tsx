@@ -28,13 +28,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   initialBarcode,
   onDepartmentCreated,
 }) => {
-  const [departmentId, setDepartmentId] = useState<number>(defaultDepartmentId || (departments[0]?.id || 0));
+  // 0 means "nothing chosen". Falling back to departments[0] used to file an
+  // unmatched product under whichever department happened to sort first, with
+  // nothing on screen saying so. handleSubmit refuses to save while it is 0.
+  const [departmentId, setDepartmentId] = useState<number>(defaultDepartmentId || 0);
   const [name, setName] = useState('');
   const [barcode, setBarcode] = useState('');
   const [sku, setSku] = useState('');
   const [price, setPrice] = useState('');
   const [costPrice, setCostPrice] = useState('');
-  const [stockQuantity, setStockQuantity] = useState('10');
+  const [stockQuantity, setStockQuantity] = useState('1');
   const [minStockLevel, setMinStockLevel] = useState('5');
   const [unit, setUnit] = useState('pcs');
   const [isSaving, setIsSaving] = useState(false);
@@ -75,14 +78,18 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         if (result.sku) {
           setSku(result.sku);
         }
-        if (result.suggestedPrice && (!price || price === '0' || price === '0.00')) {
-          setPrice(result.suggestedPrice.toFixed(2));
-        }
-        setAutofillSuccess(`✓ Autofilled "${result.name}" from ${result.source || 'product registry'}`);
+        // Price is never autofilled: the registries quote figures in US dollars,
+        // and writing one into the price field would misprice the product.
+        const source = result.source || 'product registry';
+        setAutofillSuccess(
+          result.departmentId
+            ? `✓ Autofilled "${result.name}" from ${source}`
+            : `✓ Autofilled "${result.name}" from ${source} — please choose a department`,
+        );
         playScanSuccessSound();
-      } else if (result.sku && !sku) {
-        setSku(result.sku);
-        setAutofillSuccess(`Barcode set. (Generated SKU: ${result.sku})`);
+      } else {
+        if (result.sku && !sku) setSku(result.sku);
+        setAutofillSuccess('Not in the product registries — please type the name and price.');
       }
     } catch (err) {
       console.warn('Autofill lookup error:', err);
@@ -112,13 +119,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setUnit(product.unit || 'pcs');
       setShowNewDeptForm(false);
     } else {
-      setDepartmentId(defaultDepartmentId || (departments[0]?.id || 0));
+      setDepartmentId(defaultDepartmentId || 0);
       setName('');
       setBarcode(initialBarcode || '');
       setSku('');
       setPrice('');
       setCostPrice('');
-      setStockQuantity('10');
+      setStockQuantity('1');
       setMinStockLevel('5');
       setUnit('pcs');
       if (departments.length === 0) {
@@ -132,7 +139,10 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     }
     setError(null);
     setAutofillSuccess(null);
-  }, [product, defaultDepartmentId, initialBarcode, isOpen, departments]);
+  // `departments` is deliberately NOT a dependency. App rebuilds that array on
+  // every refreshData(), and including it re-ran this whole reset — blanking a
+  // half-typed product mid-entry, and re-triggering the barcode lookup.
+  }, [product, defaultDepartmentId, initialBarcode, isOpen]);
 
   if (!isOpen) return null;
 

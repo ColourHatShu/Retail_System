@@ -77,6 +77,21 @@ const put = <T>(path: string, body: unknown) =>
   fetchJson<T>(`${API_BASE}${path}`, { method: 'PUT', body: JSON.stringify(body) });
 const del = <T>(path: string) => fetchJson<T>(`${API_BASE}${path}`, { method: 'DELETE' });
 
+/** What the server returns for GET /products/lookup/:barcode. */
+export interface BarcodeLookupResult {
+  found: boolean;
+  barcode: string;
+  name?: string;
+  brand?: string;
+  departmentId?: number;
+  departmentName?: string;
+  unit?: string;
+  sku?: string;
+  source?: string;
+  /** True when the answer came from the server's cache, not a live registry call. */
+  cached: boolean;
+}
+
 export interface StoreSettings {
   store_name: string;
   currency: string;
@@ -135,16 +150,31 @@ export const api = {
   deleteDepartment: (id: number) => del<{ message: string }>(`/departments/${id}`),
 
   // Products
-  getProducts: (params?: { department_id?: number | string; search?: string; low_stock?: boolean }) =>
+  getProducts: (params?: {
+    department_id?: number | string;
+    search?: string;
+    low_stock?: boolean;
+    include_archived?: boolean;
+  }) =>
     fetchJson<Product[]>(
       withQuery('/products', {
         department_id: params?.department_id,
         search: params?.search,
         low_stock: params?.low_stock ? 'true' : undefined,
+        include_archived: params?.include_archived ? 'true' : undefined,
       }),
     ),
+  /**
+   * Retires a product that cannot be deleted because it appears on receipts.
+   * It leaves the catalogue and the register; its sales history stays intact.
+   */
+  archiveProduct: (id: number) => put<Product>(`/products/${id}`, { is_active: false }),
+  restoreProduct: (id: number) => put<Product>(`/products/${id}`, { is_active: true }),
   getProductByBarcode: (barcode: string) =>
     fetchJson<Product>(`${API_BASE}/products/barcode/${encodeURIComponent(barcode.trim())}`),
+  /** Enriches an unknown barcode from the public registries, via the server. */
+  lookupBarcode: (barcode: string) =>
+    fetchJson<BarcodeLookupResult>(`${API_BASE}/products/lookup/${encodeURIComponent(barcode.trim())}`),
   createProduct: (data: Partial<Product>) => post<Product>('/products', data),
   updateProduct: (id: number, data: Partial<Product>) => put<Product>(`/products/${id}`, data),
   deleteProduct: (id: number) => del<{ message: string }>(`/products/${id}`),
