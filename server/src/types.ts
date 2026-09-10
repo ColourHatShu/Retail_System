@@ -10,7 +10,13 @@ export const MOVEMENT_TYPES = [
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
-export const PAYMENT_METHODS = ['CASH', 'CARD', 'UPI_QR'] as const;
+/**
+ * Tenders a NEW sale or refund may use. Narrowed to cash and card; UPI_QR was
+ * an Indian tender that does not apply to a Canadian shop. Historical rows may
+ * still hold other values — nothing validates stored strings, so old receipts
+ * keep displaying whatever they were taken with.
+ */
+export const PAYMENT_METHODS = ['CASH', 'CARD'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const SALE_STATUSES = ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED', 'VOIDED'] as const;

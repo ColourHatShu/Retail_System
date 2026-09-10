@@ -7,7 +7,6 @@ import {
   Trash2,
   CreditCard,
   Banknote,
-  QrCode,
   ArrowRight,
   ShoppingBag,
   AlertTriangle,
@@ -43,7 +42,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI_QR'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD'>('CASH');
   const [amountTendered, setAmountTendered] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -922,7 +921,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-2">
                   Payment Method
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('CASH')}
@@ -946,18 +945,6 @@ export const POSPage: React.FC<POSPageProps> = ({
                   >
                     <CreditCard className="w-5 h-5" />
                     <span className="text-xs font-bold">Card</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('UPI_QR')}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
-                      paymentMethod === 'UPI_QR'
-                        ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm'
-                        : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
-                    }`}
-                  >
-                    <QrCode className="w-5 h-5" />
-                    <span className="text-xs font-bold">UPI / QR</span>
                   </button>
                 </div>
               </div>

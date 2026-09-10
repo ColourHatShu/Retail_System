@@ -193,7 +193,7 @@ describe.skipIf(!hasDatabase)('sales', () => {
       for (let i = 0; i < 3; i++) {
         const res = await api
           .post('/api/sales/checkout')
-          .send({ items: [{ product_id: p.id, quantity: 1 }], payment_method: 'UPI_QR' });
+          .send({ items: [{ product_id: p.id, quantity: 1 }], payment_method: 'CARD' });
         expect(res.status).toBe(201);
         nums.push(res.body.data.receipt_number);
       }

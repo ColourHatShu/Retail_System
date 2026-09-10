@@ -201,7 +201,7 @@ export const api = {
     discount?: number;
     total: number;
     expected_total?: number;
-    payment_method: 'CASH' | 'CARD' | 'UPI_QR';
+    payment_method: 'CASH' | 'CARD';
     amount_paid: number;
     customer_name?: string;
     customer_phone?: string;
