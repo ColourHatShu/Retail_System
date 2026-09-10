@@ -1,0 +1,9 @@
+# Keeps credentials and local build output out of the image build context.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+src/tests
+vitest.config.ts
+npm-debug.log

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexus-pos-v2';
+const CACHE_NAME = 'nexus-pos-v3';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: Network first for API/Supabase, stale-while-revalidate for static assets
+// Fetch Event: the API is never cached; static assets are stale-while-revalidate.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -41,6 +41,11 @@ self.addEventListener('fetch', (event) => {
 
   // Do not intercept Supabase database or third-party external requests
   if (url.origin !== self.location.origin) return;
+
+  // Never cache the API. Under a Firebase Hosting rewrite /api/** is same-origin,
+  // so without this the cache would serve stale stock, stale prices, and one
+  // cashier's /api/auth/me to the next cashier on a shared till.
+  if (url.pathname.startsWith('/api/')) return;
 
   // Stale-while-revalidate for local static assets
   event.respondWith(
