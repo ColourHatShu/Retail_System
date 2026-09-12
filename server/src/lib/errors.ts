@@ -23,12 +23,26 @@ export const notFound = (message: string) => new AppError(404, 'NOT_FOUND', mess
 export const conflict = (code: string, message: string, details?: unknown) =>
   new AppError(409, code, message, details);
 
+/**
+ * Keyed by constraint name. Postgres withholds the "Key (col)=(val)" detail
+ * from any role subject to row-level security — it could leak another
+ * tenant's value — but the constraint name is always reported, and ours are
+ * named for what they protect.
+ */
 const UNIQUE_MESSAGES: Record<string, string> = {
-  'products.barcode': 'A product with this barcode already exists',
-  'departments.name': 'A department with this name already exists',
-  'departments.code': 'A department with this code already exists',
-  'sales.receipt_number': 'Receipt number collision, please retry the sale',
-  'users.username': 'A user with this username already exists',
+  products_tenant_barcode_key: 'A product with this barcode already exists',
+  departments_tenant_name_key: 'A department with this name already exists',
+  departments_tenant_code_key: 'A department with this code already exists',
+  sales_tenant_receipt_number_key: 'Receipt number collision, please retry the sale',
+  returns_tenant_return_number_key: 'Return number collision, please retry',
+  users_tenant_username_key: 'A user with this username already exists',
+  tenants_slug_key: 'A store with this code already exists',
+  platform_admins_username_key: 'An administrator with this username already exists',
+  // Pre-tenancy names, in case an error arrives from a legacy constraint.
+  products_barcode_key: 'A product with this barcode already exists',
+  departments_name_key: 'A department with this name already exists',
+  departments_code_key: 'A department with this code already exists',
+  users_username_key: 'A user with this username already exists',
 };
 
 /**
@@ -74,14 +88,12 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 
   const code: string | undefined = err?.code;
 
-  // Postgres unique_violation. err.table + err.detail ("Key (barcode)=(x) already exists.")
+  // Postgres unique_violation. Identified by constraint name — see UNIQUE_MESSAGES.
   if (code === '23505') {
-    const column = /Key \(([^)]+)\)/.exec(String(err.detail ?? ''))?.[1];
-    const key = `${err.table}.${column}`;
     res.status(409).json({
       success: false,
       code: 'ALREADY_EXISTS',
-      error: UNIQUE_MESSAGES[key] || 'A record with these values already exists',
+      error: UNIQUE_MESSAGES[String(err.constraint ?? '')] || 'A record with these values already exists',
     });
     return;
   }

@@ -1,5 +1,6 @@
-import { getPool, row, withTransaction } from '../db';
+import { currentDb, row, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
+import { asTenant, withBypass } from '../lib/tenant';
 import { DUMMY_HASH_PROMISE, generateSessionToken, hashPassword, hashToken, verifyPassword } from '../lib/auth';
 import { AppError, badRequest } from '../lib/errors';
 import type { AuthLogin, AuthSetup, ChangePassword } from '../schemas';
@@ -20,6 +21,7 @@ export interface SessionResult {
 export function serializeUser(r: UserRow): AuthUser {
   return {
     id: r.id,
+    tenant_id: r.tenant_id,
     username: r.username,
     display_name: r.display_name,
     role: r.role,
@@ -79,49 +81,73 @@ export function resetLoginThrottle(): void {
 
 async function createSession(
   tx: Queryable,
-  userId: number,
+  user: Pick<UserRow, 'id' | 'tenant_id'>,
   ip: string | null,
 ): Promise<{ token: string; expires_at: string }> {
   const { token, tokenHash } = generateSessionToken();
   const expires = new Date(Date.now() + SESSION_TTL_MS);
-  await tx.query('INSERT INTO sessions (token_hash, user_id, expires_at, ip) VALUES ($1, $2, $3, $4)', [
-    tokenHash,
-    userId,
-    expires.toISOString(),
-    ip,
-  ]);
+  await tx.query(
+    'INSERT INTO sessions (tenant_id, token_hash, user_id, expires_at, ip) VALUES ($1, $2, $3, $4, $5)',
+    [user.tenant_id, tokenHash, user.id, expires.toISOString(), ip],
+  );
   return { token, expires_at: expires.toISOString() };
 }
 
-export async function authStatus(db: Queryable = getPool()): Promise<{ needs_setup: boolean }> {
-  const { count } = (await row<{ count: number }>(db, 'SELECT COUNT(*) AS count FROM users'))!;
-  return { needs_setup: count === 0 };
+/** The tenant that existed before multi-tenancy; first-run setup creates its owner. */
+const DEFAULT_TENANT_ID = 1;
+
+/** True while no user exists in any tenant — the first-run setup wall. Sees across tenants. */
+export async function authStatus(): Promise<{ needs_setup: boolean }> {
+  return withBypass(async () => {
+    const { count } = (await row<{ count: number }>(currentDb(), 'SELECT COUNT(*) AS count FROM users'))!;
+    return { needs_setup: count === 0 };
+  });
 }
 
-/** Creates the first OWNER. Only allowed while the users table is empty. */
+/** Creates the first OWNER of the default tenant. Only allowed while no user exists anywhere. */
 export async function setupOwner(input: AuthSetup, ip: string | null): Promise<SessionResult> {
-  return withTransaction(async (tx) => {
-    await tx.query('SELECT pg_advisory_xact_lock($1)', [SETUP_LOCK_KEY]);
-    const { count } = (await row<{ count: number }>(tx, 'SELECT COUNT(*) AS count FROM users'))!;
-    if (count > 0) {
-      throw new AppError(409, 'ALREADY_SET_UP', 'An owner account already exists. Sign in instead.');
-    }
-    const user = (await row<UserRow>(
-      tx,
-      `INSERT INTO users (username, display_name, password_hash, role, last_login_at)
-       VALUES ($1, $2, $3, 'OWNER', now()) RETURNING *`,
-      [input.username, input.display_name, await hashPassword(input.password)],
-    ))!;
-    const session = await createSession(tx, user.id, ip);
-    return { user: serializeUser(user), ...session };
-  });
+  return withBypass(() =>
+    withTransaction(async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock($1)', [SETUP_LOCK_KEY]);
+      const { count } = (await row<{ count: number }>(tx, 'SELECT COUNT(*) AS count FROM users'))!;
+      if (count > 0) {
+        throw new AppError(409, 'ALREADY_SET_UP', 'An owner account already exists. Sign in instead.');
+      }
+      const user = (await row<UserRow>(
+        tx,
+        `INSERT INTO users (tenant_id, username, display_name, password_hash, role, last_login_at)
+         VALUES ($1, $2, $3, $4, 'OWNER', now()) RETURNING *`,
+        [DEFAULT_TENANT_ID, input.username, input.display_name, await hashPassword(input.password)],
+      ))!;
+      const session = await createSession(tx, user, ip);
+      return { user: serializeUser(user), ...session };
+    }),
+  );
 }
 
 export async function login(input: AuthLogin, ip: string | null): Promise<SessionResult> {
   const key = throttleKey(input.username, ip ?? '');
   assertNotLocked(key);
 
-  const user = await row<UserRow>(getPool(), 'SELECT * FROM users WHERE username = $1', [input.username]);
+  // Usernames are unique per tenant, not globally, and the tenant is not known
+  // yet — so look across all of them. A store code disambiguates when the same
+  // username exists in more than one shop; a single shop never needs one.
+  const candidates = await withBypass(() =>
+    rows<UserRow & { tenant_active: boolean; tenant_slug: string }>(
+      currentDb(),
+      `SELECT u.*, t.is_active AS tenant_active, t.slug AS tenant_slug
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.username = $1 AND ($2::text IS NULL OR t.slug = $2)`,
+      [input.username, input.tenant ?? null],
+    ),
+  );
+
+  if (candidates.length > 1) {
+    throw new AppError(400, 'TENANT_REQUIRED', 'This username exists in more than one store. Enter your store code.', {
+      stores: candidates.map((c) => c.tenant_slug),
+    });
+  }
+  const user = candidates[0];
 
   // Always run one hash verification so timing does not reveal whether the user exists.
   const ok = user
@@ -132,16 +158,22 @@ export async function login(input: AuthLogin, ip: string | null): Promise<Sessio
     recordFailure(key);
     throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect username or password');
   }
+  if (!user.tenant_active) {
+    recordFailure(key);
+    throw new AppError(403, 'TENANT_INACTIVE', 'This store has been deactivated. Contact the platform administrator.');
+  }
 
   failures.delete(key);
 
-  return withTransaction(async (tx) => {
-    const updated = (await row<UserRow>(tx, 'UPDATE users SET last_login_at = now() WHERE id = $1 RETURNING *', [
-      user.id,
-    ]))!;
-    const session = await createSession(tx, user.id, ip);
-    return { user: serializeUser(updated), ...session };
-  });
+  return asTenant(user.tenant_id, () =>
+    withTransaction(async (tx) => {
+      const updated = (await row<UserRow>(tx, 'UPDATE users SET last_login_at = now() WHERE id = $1 RETURNING *', [
+        user.id,
+      ]))!;
+      const session = await createSession(tx, user, ip);
+      return { user: serializeUser(updated), ...session };
+    }),
+  );
 }
 
 /** Resolve a bearer token to its user, or null if unknown, expired, revoked, or deactivated. */
@@ -153,13 +185,18 @@ export async function authenticate(token: string): Promise<AuthUser | null> {
     return cached.user;
   }
 
-  const found = await row<UserRow & { expires_at: string }>(
-    getPool(),
-    `SELECT u.*, s.expires_at
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.is_active`,
-    [tokenHash],
+  // The tenant is not known until the token resolves, so this one lookup
+  // sees across tenants. A deactivated store's sessions stop working at once.
+  const found = await withBypass(() =>
+    row<UserRow & { expires_at: string }>(
+      currentDb(),
+      `SELECT u.*, s.expires_at
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       JOIN tenants t ON t.id = u.tenant_id
+       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.is_active AND t.is_active`,
+      [tokenHash],
+    ),
   );
   if (!found) {
     sessionCache.delete(tokenHash);
@@ -171,7 +208,7 @@ export async function authenticate(token: string): Promise<AuthUser | null> {
 }
 
 export async function logout(tokenHash: string): Promise<void> {
-  await getPool().query('UPDATE sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL', [
+  await currentDb().query('UPDATE sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL', [
     tokenHash,
   ]);
   sessionCache.delete(tokenHash);
@@ -188,7 +225,7 @@ export async function revokeUserSessions(db: Queryable, userId: number, exceptTo
 }
 
 export async function changePassword(user: AuthUser, input: ChangePassword, currentTokenHash: string): Promise<void> {
-  const stored = (await row<UserRow>(getPool(), 'SELECT * FROM users WHERE id = $1', [user.id]))!;
+  const stored = (await row<UserRow>(currentDb(), 'SELECT * FROM users WHERE id = $1', [user.id]))!;
   if (!(await verifyPassword(input.current_password, stored.password_hash))) {
     throw badRequest('Current password is incorrect');
   }

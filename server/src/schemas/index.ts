@@ -205,7 +205,12 @@ const displayName = z.string().trim().min(1).max(80);
 export const authSetup = z.object({ username, password: newPassword, display_name: displayName });
 export type AuthSetup = z.infer<typeof authSetup>;
 
-export const authLogin = z.object({ username, password: z.string().min(1).max(200) });
+export const authLogin = z.object({
+  username,
+  password: z.string().min(1).max(200),
+  /** Store code. Only needed when the same username exists in more than one store. */
+  tenant: z.string().trim().min(1).max(40).optional(),
+});
 export type AuthLogin = z.infer<typeof authLogin>;
 
 export const changePassword = z.object({ current_password: z.string().min(1).max(200), new_password: newPassword });
@@ -221,6 +226,47 @@ export const userUpdate = z.object({
   password: newPassword.optional(),
 });
 export type UserUpdate = z.infer<typeof userUpdate>;
+
+// ---------- platform admin ----------
+
+const slug = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2)
+  .max(40)
+  .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, 'letters, digits and dashes only; must start and end with a letter or digit');
+
+export const adminSetup = authSetup;
+export type AdminSetup = z.infer<typeof adminSetup>;
+
+export const adminLogin = z.object({ username, password: z.string().min(1).max(200) });
+export type AdminLogin = z.infer<typeof adminLogin>;
+
+export const tenantCreate = z.object({
+  slug,
+  name: z.string().trim().min(1).max(120),
+  owner_username: username,
+  owner_display_name: displayName,
+  owner_password: newPassword,
+  currency: z.string().trim().length(3).transform((s) => s.toUpperCase()).optional(),
+});
+export type TenantCreate = z.infer<typeof tenantCreate>;
+
+export const tenantUpdate = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  slug: slug.optional(),
+});
+export type TenantUpdate = z.infer<typeof tenantUpdate>;
+
+export const ownerPasswordReset = z.object({ new_password: newPassword });
+export type OwnerPasswordReset = z.infer<typeof ownerPasswordReset>;
+
+export const adminActionsQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+  tenant_id: optionalId,
+});
+export type AdminActionsQuery = z.infer<typeof adminActionsQuery>;
 
 // ---------- settings ----------
 

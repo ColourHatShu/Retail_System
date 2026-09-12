@@ -1,4 +1,4 @@
-import { getPool, row, rows, withTransaction } from '../db';
+import { currentDb, row, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
 import { badRequest, notFound } from '../lib/errors';
 import { fromCents, toCents } from '../lib/money';
@@ -65,7 +65,7 @@ async function departmentExists(db: Queryable, id: number): Promise<boolean> {
   return !!(await row(db, 'SELECT 1 FROM departments WHERE id = $1', [id]));
 }
 
-export async function listProducts(q: ProductListQuery, db: Queryable = getPool()): Promise<Product[]> {
+export async function listProducts(q: ProductListQuery, db: Queryable = currentDb()): Promise<Product[]> {
   const where: string[] = [];
   const params: unknown[] = [];
 
@@ -90,11 +90,11 @@ export async function listProducts(q: ProductListQuery, db: Queryable = getPool(
   return (await rows<ProductRow>(db, sql, params)).map(serializeProduct);
 }
 
-export async function getProduct(id: number, db: Queryable = getPool()): Promise<Product> {
+export async function getProduct(id: number, db: Queryable = currentDb()): Promise<Product> {
   return serializeProduct(await requireProductRowById(db, id));
 }
 
-export async function getProductByBarcode(barcode: string, db: Queryable = getPool()): Promise<Product> {
+export async function getProductByBarcode(barcode: string, db: Queryable = currentDb()): Promise<Product> {
   return serializeProduct(await requireProductRowByBarcode(db, barcode));
 }
 
@@ -191,6 +191,6 @@ export async function updateProduct(id: number, input: ProductUpdate): Promise<P
  * by archiving instead: PUT /api/products/:id with { is_active: false }.
  */
 export async function deleteProduct(id: number): Promise<void> {
-  const deleted = await row<{ id: number }>(getPool(), 'DELETE FROM products WHERE id = $1 RETURNING id', [id]);
+  const deleted = await row<{ id: number }>(currentDb(), 'DELETE FROM products WHERE id = $1 RETURNING id', [id]);
   if (!deleted) throw notFound(`Product ${id} not found`);
 }

@@ -116,11 +116,31 @@ describe.skipIf(!hasDatabase)('migrations', { timeout: 120_000 }, () => {
       code: '23503',
     });
 
-    // The wide-open policies and the client-side checkout RPC are gone.
-    const policies = await getPool().query(
-      'SELECT policyname FROM pg_policies WHERE schemaname = current_schema()',
+    // The wide-open "Allow public all access" policies and the client-side
+    // checkout RPC are gone. What remains is exactly one tenant_isolation
+    // policy per scoped table — the multi-tenant boundary.
+    const policies = await getPool().query<{ tablename: string; policyname: string }>(
+      'SELECT tablename, policyname FROM pg_policies WHERE schemaname = current_schema() ORDER BY tablename',
     );
-    expect(policies.rows).toEqual([]);
+    expect(policies.rows.map((p) => `${p.tablename}:${p.policyname}`)).toEqual([
+      'barcode_lookups:shared_cache',
+      'departments:tenant_isolation', 'products:tenant_isolation', 'return_items:tenant_isolation',
+      'returns:tenant_isolation', 'sale_items:tenant_isolation', 'sales:tenant_isolation',
+      'sequences:tenant_isolation', 'sessions:tenant_isolation', 'settings:tenant_isolation',
+      'stock_movements:tenant_isolation', 'users:tenant_isolation',
+    ]);
+
+    // Every legacy row was adopted by tenant 1, so the shop that existed
+    // before multi-tenancy keeps everything it had.
+    const adopted = await getPool().query<{ table_name: string; n: number }>(`
+      SELECT 'products' AS table_name, COUNT(*)::int AS n FROM products WHERE tenant_id = 1
+      UNION ALL SELECT 'sales', COUNT(*)::int FROM sales WHERE tenant_id = 1
+      UNION ALL SELECT 'stock_movements', COUNT(*)::int FROM stock_movements WHERE tenant_id = 1`);
+    expect(Object.fromEntries(adopted.rows.map((r) => [r.table_name, r.n]))).toEqual({
+      products: 2,
+      sales: 1,
+      stock_movements: 1,
+    });
     const fn = await getPool().query(
       "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE p.proname = 'process_pos_checkout' AND n.nspname = current_schema()",
     );
@@ -130,8 +150,9 @@ describe.skipIf(!hasDatabase)('migrations', { timeout: 120_000 }, () => {
       "SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity ORDER BY relname",
     );
     expect(rls.rows.map((r) => r.relname)).toEqual([
-      'barcode_lookups', 'departments', 'products', 'return_items', 'returns', 'sale_items', 'sales', 'sequences',
-      'sessions', 'settings', 'stock_movements', 'users',
+      'admin_actions', 'admin_sessions', 'barcode_lookups', 'departments', 'platform_admins', 'products',
+      'return_items', 'returns', 'sale_items', 'sales', 'sequences', 'sessions', 'settings', 'stock_movements',
+      'tenants', 'users',
     ]);
 
     // Actor columns exist and are nullable so legacy rows survive.

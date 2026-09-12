@@ -16,6 +16,11 @@ if (process.env.TEST_DATABASE_URL) {
 // and never touch the real public schema. helpers.ts creates and drops it.
 process.env.DB_SCHEMA = `test_${crypto.randomBytes(4).toString('hex')}`;
 
+// Row-level security is forced on every scoped table, so a query that declares
+// no tenant sees nothing. Tests run as the default tenant unless a test scopes
+// itself otherwise (tenancy.test.ts does, to prove isolation).
+process.env.DB_DEFAULT_TENANT = '1';
+
 if (!process.env.DATABASE_URL) {
   console.warn(
     '\n[tests] DATABASE_URL is not set, so every database-backed suite is SKIPPED.\n' +

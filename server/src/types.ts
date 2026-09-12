@@ -30,6 +30,7 @@ export type Role = (typeof ROLES)[number];
 
 export interface UserRow {
   id: number;
+  tenant_id: number;
   username: string;
   display_name: string;
   password_hash: string;
@@ -42,12 +43,73 @@ export interface UserRow {
 /** A user as exposed by the API: never carries the password hash. */
 export interface AuthUser {
   id: number;
+  tenant_id: number;
   username: string;
   display_name: string;
   role: Role;
   is_active: boolean;
   created_at: string;
   last_login_at: string | null;
+  /**
+   * Set when a platform admin is switched into this seller. The request then
+   * runs as the seller's owner for permissions, but money operations refuse
+   * it and every write is logged against the admin. See lib/authz.ts.
+   */
+  acting_admin_id?: number;
+}
+
+// ---------- platform (cross-tenant) ----------
+
+export interface TenantRow {
+  id: number;
+  slug: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  deactivated_at: string | null;
+}
+
+export interface Tenant extends TenantRow {
+  owner_username?: string;
+  user_count?: number;
+  product_count?: number;
+  sale_count?: number;
+  last_sale_at?: string | null;
+}
+
+export interface PlatformAdminRow {
+  id: number;
+  username: string;
+  display_name: string;
+  password_hash: string;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export type PlatformAdmin = Omit<PlatformAdminRow, 'password_hash'>;
+
+export interface AdminSessionRow {
+  id: number;
+  admin_id: number;
+  token_hash: string;
+  acting_tenant_id: number | null;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  ip: string | null;
+}
+
+export interface AdminAction {
+  id: number;
+  admin_id: number;
+  admin_username?: string;
+  action: string;
+  tenant_id: number | null;
+  tenant_name?: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+  created_at: string;
 }
 
 export interface DepartmentRow {

@@ -1,5 +1,6 @@
-import { getPool, row, rows, withTransaction } from '../db';
+import { currentDb, getPool, row, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
+import { declareScope } from '../lib/tenant';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors';
 import { formatMoney, fromCents } from '../lib/money';
 import type { ReturnCreate } from '../schemas';
@@ -64,7 +65,7 @@ function serializeReturn(r: ReturnRow, items?: ReturnItemRow[]): ReturnRecord {
   };
 }
 
-export async function getReturn(id: number, db: Queryable = getPool()): Promise<ReturnRecord> {
+export async function getReturn(id: number, db: Queryable = currentDb()): Promise<ReturnRecord> {
   const r = await row<ReturnRow>(db, `${RETURN_SELECT} WHERE r.id = $1`, [id]);
   if (!r) throw notFound(`Return ${id} not found`);
   const items = await rows<ReturnItemRow>(db, 'SELECT * FROM return_items WHERE return_id = $1 ORDER BY id', [id]);
@@ -75,7 +76,7 @@ export async function listReturns(
   limit: number,
   offset: number,
 ): Promise<{ data: ReturnRecord[]; pagination: Pagination }> {
-  const db = getPool();
+  const db = currentDb();
   const list = await rows<ReturnRow>(
     db,
     `${RETURN_SELECT} ORDER BY r.created_at DESC, r.id DESC LIMIT $1 OFFSET $2`,
@@ -86,7 +87,7 @@ export async function listReturns(
 }
 
 export async function returnsForSale(saleId: number): Promise<ReturnRecord[]> {
-  const list = await rows<ReturnRow>(getPool(), `${RETURN_SELECT} WHERE r.sale_id = $1 ORDER BY r.id`, [saleId]);
+  const list = await rows<ReturnRow>(currentDb(), `${RETURN_SELECT} WHERE r.sale_id = $1 ORDER BY r.id`, [saleId]);
   return list.map((r) => serializeReturn(r));
 }
 
@@ -242,9 +243,13 @@ export interface ReturnQuote {
 
 /** Dry run: what would this return refund, and may the signed-in user do it? Writes nothing. */
 export async function quoteReturn(input: ReturnCreate, actor: AuthUser): Promise<ReturnQuote> {
+  // A real client, not the scoped wrapper: this holds one transaction open
+  // across several reads and always rolls it back. The scope is declared
+  // exactly as withTransaction would, so it sees the caller's tenant.
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
+    await declareScope(client);
     const plan = await buildPlan(client, input, 'RETURN');
     const settings = await getSettings(client);
     const blocked = blockedReason(plan, actor, settings.currency);

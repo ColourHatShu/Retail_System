@@ -1,4 +1,4 @@
-import { getPool, row, rows } from '../db';
+import { currentDb, row, rows } from '../db';
 import type { Queryable } from '../db';
 import { conflict, notFound } from '../lib/errors';
 import { fromCents } from '../lib/money';
@@ -13,7 +13,7 @@ function serialize(r: DepartmentRow): Department {
   };
 }
 
-export async function listDepartments(db: Queryable = getPool()): Promise<Department[]> {
+export async function listDepartments(db: Queryable = currentDb()): Promise<Department[]> {
   const list = await rows<DepartmentRow>(
     db,
     `SELECT d.*,
@@ -28,7 +28,7 @@ export async function listDepartments(db: Queryable = getPool()): Promise<Depart
   return list.map(serialize);
 }
 
-export async function getDepartment(id: number, db: Queryable = getPool()): Promise<Department> {
+export async function getDepartment(id: number, db: Queryable = currentDb()): Promise<Department> {
   const r = await row<DepartmentRow>(db, 'SELECT * FROM departments WHERE id = $1', [id]);
   if (!r) throw notFound(`Department ${id} not found`);
   return serialize(r);
@@ -36,7 +36,7 @@ export async function getDepartment(id: number, db: Queryable = getPool()): Prom
 
 export async function createDepartment(input: DepartmentCreate): Promise<Department> {
   const created = await row<DepartmentRow>(
-    getPool(),
+    currentDb(),
     'INSERT INTO departments (name, code, description, color) VALUES ($1, $2, $3, $4) RETURNING *',
     [input.name, input.code, input.description ?? null, input.color ?? '#4f46e5'],
   );
@@ -44,7 +44,7 @@ export async function createDepartment(input: DepartmentCreate): Promise<Departm
 }
 
 export async function updateDepartment(id: number, input: DepartmentUpdate): Promise<Department> {
-  const db = getPool();
+  const db = currentDb();
   await getDepartment(id, db);
 
   const sets: string[] = [];
@@ -66,7 +66,7 @@ export async function updateDepartment(id: number, input: DepartmentUpdate): Pro
 }
 
 export async function deleteDepartment(id: number): Promise<void> {
-  const db = getPool();
+  const db = currentDb();
   await getDepartment(id, db);
   const { count } = (await row<{ count: number }>(db, 'SELECT COUNT(*) AS count FROM products WHERE department_id = $1', [
     id,

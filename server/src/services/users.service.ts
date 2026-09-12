@@ -1,4 +1,4 @@
-import { getPool, row, rows, withTransaction } from '../db';
+import { currentDb, row, rows, withTransaction } from '../db';
 import { hashPassword } from '../lib/auth';
 import { badRequest, notFound } from '../lib/errors';
 import type { UserCreate, UserUpdate } from '../schemas';
@@ -6,13 +6,13 @@ import type { AuthUser, UserRow } from '../types';
 import { revokeUserSessions, serializeUser } from './auth.service';
 
 export async function listUsers(): Promise<AuthUser[]> {
-  const list = await rows<UserRow>(getPool(), 'SELECT * FROM users ORDER BY role, username');
+  const list = await rows<UserRow>(currentDb(), 'SELECT * FROM users ORDER BY role, username');
   return list.map(serializeUser);
 }
 
 export async function createUser(input: UserCreate): Promise<AuthUser> {
   const created = await row<UserRow>(
-    getPool(),
+    currentDb(),
     `INSERT INTO users (username, display_name, password_hash, role)
      VALUES ($1, $2, $3, $4) RETURNING *`,
     [input.username, input.display_name, await hashPassword(input.password), input.role],

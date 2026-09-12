@@ -1,7 +1,8 @@
 import cors from 'cors';
 import express from 'express';
-import { requireAuth } from './lib/authz';
+import { forbidImpersonation, requireAuth } from './lib/authz';
 import { errorHandler, notFoundHandler } from './lib/errors';
+import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
 import { departmentRouter } from './routes/departments';
 import { inventoryRouter } from './routes/inventory';
@@ -29,13 +30,17 @@ export function createApp() {
   // Public: first-run setup, sign in.
   app.use('/api/auth', authRouter);
 
+  // The platform administrator. Manages its own authentication; runs with
+  // row-level security bypassed because its screens are about every seller.
+  app.use('/api/admin', adminRouter);
+
   // Everything else requires a signed-in user; roles are enforced per route.
   app.use('/api/users', requireAuth, usersRouter);
   app.use('/api/departments', requireAuth, departmentRouter);
   app.use('/api/products', requireAuth, productRouter);
-  app.use('/api/inventory', requireAuth, inventoryRouter);
-  app.use('/api/sales', requireAuth, salesRouter);
-  app.use('/api/returns', requireAuth, returnsRouter);
+  app.use('/api/inventory', requireAuth, forbidImpersonation, inventoryRouter);
+  app.use('/api/sales', requireAuth, forbidImpersonation, salesRouter);
+  app.use('/api/returns', requireAuth, forbidImpersonation, returnsRouter);
   app.use('/api/movements', requireAuth, movementRouter);
   app.use('/api/settings', requireAuth, settingsRouter);
 

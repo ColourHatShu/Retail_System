@@ -1,4 +1,4 @@
-import { getPool, row, rows, withTransaction } from '../db';
+import { currentDb, row, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { applyBps, bpsToPercent, formatMoney, fromCents, toCents } from '../lib/money';
@@ -79,21 +79,21 @@ export async function getSaleItems(db: Queryable, saleId: number): Promise<SaleI
   return rows<SaleItemRow>(db, SALE_ITEMS_SELECT, [saleId]);
 }
 
-export async function getSale(id: number, db: Queryable = getPool()): Promise<Sale> {
+export async function getSale(id: number, db: Queryable = currentDb()): Promise<Sale> {
   const sale = await row<SaleRow>(db, `${SALE_SELECT} WHERE s.id = $1`, [id]);
   if (!sale) throw notFound(`Sale ${id} not found`);
   return serializeSale(sale, await getSaleItems(db, id));
 }
 
 /** Receipt lookup for returns: what the customer hands over at the counter. */
-export async function getSaleByReceipt(receiptNumber: string, db: Queryable = getPool()): Promise<Sale> {
+export async function getSaleByReceipt(receiptNumber: string, db: Queryable = currentDb()): Promise<Sale> {
   const sale = await row<SaleRow>(db, `${SALE_SELECT} WHERE s.receipt_number = $1`, [receiptNumber.trim().toUpperCase()]);
   if (!sale) throw notFound(`Receipt ${receiptNumber} not found`);
   return serializeSale(sale, await getSaleItems(db, sale.id));
 }
 
 export async function listSales(limit: number, offset: number): Promise<{ data: Sale[]; pagination: Pagination }> {
-  const db = getPool();
+  const db = currentDb();
   const list = await rows<SaleRow>(db, `${SALE_SELECT} ORDER BY s.created_at DESC, s.id DESC LIMIT $1 OFFSET $2`, [
     limit,
     offset,
@@ -112,7 +112,7 @@ export async function nextDocumentNumber(tx: Queryable, prefix: 'REC' | 'RET'): 
   const { value } = (await row<{ value: number }>(
     tx,
     `INSERT INTO sequences (name, value) VALUES ($1, 1)
-     ON CONFLICT (name) DO UPDATE SET value = sequences.value + 1
+     ON CONFLICT (tenant_id, name) DO UPDATE SET value = sequences.value + 1
      RETURNING value`,
     [`${prefix.toLowerCase()}:${day}`],
   ))!;

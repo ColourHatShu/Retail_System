@@ -1,4 +1,4 @@
-import { getPool, row, rows } from '../db';
+import { currentDb, row, rows } from '../db';
 import type { MovementsQuery } from '../schemas';
 import type { Pagination, StockMovement, StockMovementRow } from '../types';
 import { serializeMovement } from './ledger';
@@ -47,7 +47,7 @@ function buildWhere(q: MovementsQuery): { where: string; params: unknown[] } {
 }
 
 export async function listMovements(q: MovementsQuery): Promise<{ data: StockMovement[]; pagination: Pagination }> {
-  const db = getPool();
+  const db = currentDb();
   const { where, params } = buildWhere(q);
 
   const { total } = (await row<{ total: number }>(
@@ -75,7 +75,7 @@ export interface MovementSummary {
 
 export async function getMovementSummary(): Promise<MovementSummary> {
   return (await row<MovementSummary>(
-    getPool(),
+    currentDb(),
     `SELECT
        COUNT(*) AS total_movements,
        COALESCE(SUM(CASE WHEN type = 'SALE' THEN -quantity_change ELSE 0 END), 0) AS total_sold_units,
@@ -100,7 +100,7 @@ function csvCell(value: unknown): string {
 }
 
 export async function exportMovementsCsv(): Promise<string> {
-  const list = await rows<StockMovementRow>(getPool(), `${MOVEMENT_SELECT} ORDER BY m.created_at DESC, m.id DESC`);
+  const list = await rows<StockMovementRow>(currentDb(), `${MOVEMENT_SELECT} ORDER BY m.created_at DESC, m.id DESC`);
 
   const header = [
     'ID', 'Date Time', 'Product Name', 'Barcode', 'Department', 'Type',

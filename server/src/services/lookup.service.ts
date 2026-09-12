@@ -1,4 +1,4 @@
-import { getPool, row, rows } from '../db';
+import { currentDb, row, rows } from '../db';
 import type { Queryable } from '../db';
 
 /**
@@ -361,7 +361,7 @@ async function shape(
  * of exactly the kind the server-authoritative pricing rules exist to prevent.
  * A human types the price.
  */
-export async function lookupBarcode(barcode: string, db: Queryable = getPool()): Promise<BarcodeLookup> {
+export async function lookupBarcode(barcode: string, db: Queryable = currentDb()): Promise<BarcodeLookup> {
   const clean = barcode.trim();
   const departments = await rows<DepartmentRow>(db, 'SELECT id, name, code FROM departments ORDER BY id');
 

@@ -1,5 +1,6 @@
 import { Pool, types } from 'pg';
 import type { PoolClient, QueryResultRow } from 'pg';
+import { asTenant, declareScope } from './lib/tenant';
 import { runMigrations } from './migrations';
 
 // node-postgres hands back int8 (BIGINT ids, COUNT, SUM) and numeric as strings
@@ -30,6 +31,19 @@ export function getPool(): Pool {
     throw new Error(`DB_SCHEMA "${schema}" is not a safe identifier`);
   }
 
+  // A connection-level tenant for code that runs outside any request scope —
+  // the test suite, chiefly. A request always declares its own tenant
+  // transaction-locally, which overrides this. Never set in production: an
+  // unscoped query there must see nothing, not tenant 1.
+  const defaultTenant = process.env.DB_DEFAULT_TENANT;
+  if (defaultTenant && !/^\d+$/.test(defaultTenant)) {
+    throw new Error(`DB_DEFAULT_TENANT "${defaultTenant}" is not a number`);
+  }
+  const connectionOptions = [
+    ...(schema ? [`-c search_path=${schema}`] : []),
+    ...(defaultTenant ? [`-c app.tenant_id=${defaultTenant}`] : []),
+  ];
+
   const isLocal = /@(localhost|127\.0\.0\.1)(:|\/)/.test(url);
   const sslDisabled = isLocal || process.env.PGSSL === 'disable';
 
@@ -47,7 +61,7 @@ export function getPool(): Pool {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     // Tests point every connection at a throwaway schema.
-    ...(schema ? { options: `-c search_path=${schema}` } : {}),
+    ...(connectionOptions.length ? { options: connectionOptions.join(' ') } : {}),
   });
 
   pool.on('error', (err) => {
@@ -74,11 +88,17 @@ export async function row<T extends QueryResultRow>(
   return (await rows<T>(db, text, params))[0];
 }
 
-/** Runs fn inside BEGIN/COMMIT on a dedicated client; rolls back on any throw. */
+/**
+ * Runs fn inside BEGIN/COMMIT on a dedicated client; rolls back on any throw.
+ * The current request scope (tenant or bypass) is declared on the connection
+ * right after BEGIN, transaction-locally, so row-level security admits exactly
+ * this request's rows and the setting dies with the transaction.
+ */
 export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
+    await declareScope(client);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
@@ -94,9 +114,26 @@ export async function withTransaction<T>(fn: (tx: PoolClient) => Promise<T>): Pr
   }
 }
 
+/**
+ * What services use instead of getPool(). Every query runs in its own short
+ * transaction with the current scope declared, so a plain read sees the right
+ * tenant — or, with no scope at all, nothing. Only migrations and tests reach
+ * for getPool() directly, and they know they are the connection role.
+ */
+const scopedQueryable: Queryable = {
+  query: ((text: string, params?: unknown[]) =>
+    withTransaction((tx) => tx.query(text, params as never))) as Queryable['query'],
+};
+
+export function currentDb(): Queryable {
+  return scopedQueryable;
+}
+
 export async function initDatabase(): Promise<void> {
   await runMigrations(getPool());
-  await seedDefaultDepartments();
+  // The shop that existed before multi-tenancy is tenant 1. Newer tenants are
+  // seeded by the admin service at creation; this covers a fresh database.
+  await asTenant(1, () => seedDefaultDepartments(1));
 }
 
 export async function closePool(): Promise<void> {
@@ -106,24 +143,25 @@ export async function closePool(): Promise<void> {
   }
 }
 
-async function seedDefaultDepartments(): Promise<void> {
-  const db = getPool();
-  const existing = await row<{ count: number }>(db, 'SELECT COUNT(*) AS count FROM departments');
-  if (existing && existing.count > 0) return;
+export const DEFAULT_DEPARTMENTS: ReadonlyArray<readonly [string, string, string, string]> = [
+  ['Beverages', 'BEV', 'Soft drinks, juices, water, energy drinks', '#0ea5e9'],
+  ['Grocery & Pantry', 'GROC', 'Flour, rice, spices, canned foods', '#10b981'],
+  ['Dairy & Frozen', 'DAIRY', 'Milk, cheese, butter, ice cream', '#6366f1'],
+  ['Bakery & Snacks', 'BAKE', 'Breads, cookies, chips, crackers', '#f59e0b'],
+  ['Personal Care', 'CARE', 'Soap, shampoo, hygiene, cosmetics', '#ec4899'],
+  ['Electronics & Tech', 'ELEC', 'Cables, chargers, earphones, accessories', '#8b5cf6'],
+];
 
-  const defaults = [
-    ['Beverages', 'BEV', 'Soft drinks, juices, water, energy drinks', '#0ea5e9'],
-    ['Grocery & Pantry', 'GROC', 'Flour, rice, spices, canned foods', '#10b981'],
-    ['Dairy & Frozen', 'DAIRY', 'Milk, cheese, butter, ice cream', '#6366f1'],
-    ['Bakery & Snacks', 'BAKE', 'Breads, cookies, chips, crackers', '#f59e0b'],
-    ['Personal Care', 'CARE', 'Soap, shampoo, hygiene, cosmetics', '#ec4899'],
-    ['Electronics & Tech', 'ELEC', 'Cables, chargers, earphones, accessories', '#8b5cf6'],
-  ];
+/** Gives a tenant the six standard departments if it has none. Must run inside that tenant's scope. */
+export async function seedDefaultDepartments(tenantId: number): Promise<void> {
   await withTransaction(async (tx) => {
-    for (const d of defaults) {
+    const existing = await row<{ count: number }>(tx, 'SELECT COUNT(*) AS count FROM departments');
+    if (existing && existing.count > 0) return;
+    for (const [name, code, description, color] of DEFAULT_DEPARTMENTS) {
       await tx.query(
-        'INSERT INTO departments (name, code, description, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
-        d,
+        `INSERT INTO departments (tenant_id, name, code, description, color)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        [tenantId, name, code, description, color],
       );
     }
   });

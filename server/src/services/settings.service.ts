@@ -1,4 +1,4 @@
-import { getPool, rows, withTransaction } from '../db';
+import { currentDb, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
 import { bpsToPercent, fromCents, percentToBps, toCents } from '../lib/money';
 import type { SettingsUpdate } from '../schemas';
@@ -18,7 +18,7 @@ function int(value: string | undefined, fallback: number): number {
 }
 
 /** Raw settings as stored (tax in basis points, money in cents). Used by services. */
-export async function getSettings(db: Queryable = getPool()): Promise<Settings> {
+export async function getSettings(db: Queryable = currentDb()): Promise<Settings> {
   const list = await rows<{ key: string; value: string }>(db, 'SELECT key, value FROM settings');
   const map = new Map(list.map((r) => [r.key, r.value]));
   return {
@@ -42,7 +42,7 @@ export interface SettingsApi {
 }
 
 /** API-facing shape (tax as a percentage, money as decimals). */
-export async function getSettingsApi(db: Queryable = getPool()): Promise<SettingsApi> {
+export async function getSettingsApi(db: Queryable = currentDb()): Promise<SettingsApi> {
   const s = await getSettings(db);
   return {
     store_name: s.store_name,
@@ -58,7 +58,7 @@ export async function updateSettings(input: SettingsUpdate): Promise<SettingsApi
     const upsert = (key: string, value: string) =>
       tx.query(
         `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now())
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
         [key, value],
       );
     if (input.store_name !== undefined) await upsert('store_name', input.store_name);
