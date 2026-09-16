@@ -84,7 +84,7 @@ From the repository root:
 ```bash
 gcloud run deploy nexus-pos-api \
   --source server \
-  --region us-central1 \
+  --region northamerica-northeast1 \
   --allow-unauthenticated \
   --min-instances 1 \
   --max-instances 3 \
@@ -95,12 +95,12 @@ gcloud run deploy nexus-pos-api \
 Then set the database URL separately so it never lands in shell history or a file:
 
 ```bash
-gcloud run services update nexus-pos-api --region us-central1 --set-env-vars DATABASE_URL=...
+gcloud run services update nexus-pos-api --region northamerica-northeast1 --set-env-vars DATABASE_URL=...
 ```
 
 Better still, put it in Secret Manager and reference it with `--set-secrets`.
 
-The service name and region **must match `firebase.json`** (`nexus-pos-api`, `us-central1`).
+The service name and region **must match `firebase.json`** (`nexus-pos-api`, `northamerica-northeast1`).
 `--allow-unauthenticated` is required — Firebase Hosting calls the service as an anonymous
 client. Cloud Run builds the image remotely from `server/Dockerfile`, so Docker does not need
 to be running locally.
@@ -127,7 +127,7 @@ You want `{"status":"ok",...}`. If it hangs or 500s, read the logs — it is alm
 Step 1:
 
 ```bash
-gcloud run services logs read nexus-pos-api --region us-central1 --limit 50
+gcloud run services logs read nexus-pos-api --region northamerica-northeast1 --limit 50
 ```
 
 ---
