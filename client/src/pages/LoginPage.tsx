@@ -12,6 +12,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ mode, onSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [tenant, setTenant] = useState('');
+  /** Set when the same username exists in more than one store. */
+  const [storeChoices, setStoreChoices] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -24,9 +27,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ mode, onSuccess }) => {
     try {
       const session = isSetup
         ? await api.setupOwner({ username, password, display_name: displayName })
-        : await api.login({ username, password });
+        : await api.login({ username, password, tenant: tenant.trim() || undefined });
       onSuccess(session);
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'TENANT_REQUIRED') {
+        setStoreChoices((err.details as { stores?: string[] } | undefined)?.stores ?? []);
+      }
       setError(err instanceof ApiError ? err.message : 'Sign-in failed');
     } finally {
       setBusy(false);
@@ -109,6 +115,33 @@ export const LoginPage: React.FC<LoginPageProps> = ({ mode, onSuccess }) => {
             />
           </div>
         </label>
+
+        {!isSetup && storeChoices && (
+          <label className="block space-y-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Store code</span>
+            <div className="relative">
+              <Store className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className={field}
+                value={tenant}
+                onChange={(e) => setTenant(e.target.value)}
+                placeholder={storeChoices[0] ?? 'store-code'}
+                list="store-choices"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+              />
+              <datalist id="store-choices">
+                {storeChoices.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </div>
+            <span className="block text-[11px] text-zinc-500">
+              This username belongs to more than one store. Which one is yours?
+            </span>
+          </label>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">

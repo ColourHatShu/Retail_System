@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Department, Product, CartItem, User } from './types';
 import { api } from './utils/api';
 import { getToken, onUnauthorized, setToken } from './utils/auth';
+import { ImpersonationBanner } from './components/ImpersonationBanner';
 import { Sidebar, ActiveTab, TABS_FOR_ROLE } from './components/Sidebar';
 import { InstallAppModal } from './components/InstallAppModal';
 import { LoginPage } from './pages/LoginPage';
@@ -196,7 +197,11 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col md:flex-row w-full max-w-full overflow-x-hidden">
+    <div
+      className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col md:flex-row w-full max-w-full overflow-x-hidden"
+      style={{ paddingTop: 'var(--admin-banner, 0px)' }}
+    >
+      {user?.acting_admin_id && <ImpersonationBanner user={user} />}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}

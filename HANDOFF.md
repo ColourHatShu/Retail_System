@@ -59,10 +59,14 @@ already correct.
 | Barcode enrichment with caching | done, live |
 | Auto-created departments | done, live |
 | Product archiving | done, live |
+| Multi-seller tenancy (one database, row-level isolation) | done on `feature/multi-seller-admin`, **not deployed** |
+| Platform admin panel at `/admin` (create stores, switch in, activity log) | done on `feature/multi-seller-admin`, **not deployed** |
 | Track B. Engineering hygiene | not started |
 
-Last verified: `tsc --noEmit` clean on both halves, client build clean, **80/80 server tests
-pass** against live Postgres.
+Last verified: `tsc --noEmit` clean on both halves, client build clean, **89/89 server tests
+pass** against live Postgres (nine of them are the tenancy isolation and impersonation tests).
+The admin flow was also driven end to end in a headless browser against an isolated
+`preview_admin` schema: create store → switch in → sale refused → switch out → activity log.
 
 ## 4. Key invariants — do not break these
 
@@ -144,6 +148,52 @@ The fixed list is deliberate. Registries phrase the same aisle differently every
 so creating departments from that text would sprawl into dozens of near-duplicate chips on the
 register, and a department cannot be deleted once it holds a sold product.
 **There is no cap on departments created manually.**
+
+**Multi-seller tenancy** (migration 9, `lib/tenant.ts`, `services/admin.service.ts`). Every
+seller is a *tenant*: one row in `tenants`, and a `tenant_id` on every scoped table (users,
+sessions, departments, products, sales, sale_items, returns, return_items, stock_movements,
+settings, sequences). Isolation is enforced by Postgres, not by the query code:
+
+- Every scoped table has **FORCE ROW LEVEL SECURITY** with one `tenant_isolation` policy,
+  `tenant_id = app_current_tenant()`, which reads the transaction-local setting
+  `app.tenant_id`. `tenant_id` defaults to the same function, so inserts never name it.
+- `withTransaction` calls `declareScope(tx)` right after `BEGIN`: `SET LOCAL ROLE pos_app`,
+  then `set_config('app.tenant_id', …, true)`. **This is the load-bearing line.** Supabase's
+  `postgres` role has `rolbypassrls = true`, so without switching to `pos_app` (created by the
+  migration, `NOBYPASSRLS`) every policy is silently ignored. The tenancy tests prove a query
+  with no tenant set returns nothing and an insert fails — keep them passing.
+- The request scope lives in AsyncLocalStorage (`asTenant`, `withBypass`, `currentScope`).
+  `requireAuth` wraps the rest of the request in `asTenant(user.tenant_id, …)`. Only the
+  admin service and login lookups use `withBypass`, which runs as the connection role.
+- Existing data was adopted by tenant 1 (`default`). Unique constraints are per tenant
+  (`products_tenant_barcode_key` and so on); Postgres redacts the violating value under RLS,
+  so `lib/errors.ts` maps messages by **constraint name**, not by detail text.
+- Sign-in is by username; the store slug is only asked for (`TENANT_REQUIRED`, with the list
+  of stores) when the same username exists in more than one store.
+- **First-run setup is platform-wide.** `POST /api/auth/setup` opens only while *no* user
+  exists anywhere; once the first store has an owner, every further store is provisioned by
+  the administrator, who creates its owner. `/api/admin/setup` is the same idea for the admin.
+- Tenants are **deactivated, never deleted** — receipts must survive six years for the CRA.
+  Deactivation revokes the store's sessions and clears the session cache.
+
+**Platform administrator** (`routes/admin.ts`, `client/src/AdminApp.tsx`, served at `/admin`).
+A separate principal with its own table (`platform_admins`), own sessions (`admin_sessions`),
+own token in the browser (`nexus_admin_token`) and own audit table (`admin_actions`). It is
+not a role inside a store, and `/admin` is not a tab of the register: the two surfaces share
+nothing but the API client.
+
+- Stores view: create a store (provisions tenant + owner + settings in CAD + the six standard
+  departments in one transaction), rename, deactivate, reactivate, reset the owner's password.
+- **Switch into a store**: the admin token starts resolving to that store's OWNER with
+  `acting_admin_id` set, and the register opens as that user — same screens, same data — under
+  a fixed amber banner with a **Switch out** button. The banner publishes its height as the
+  CSS variable `--admin-banner`; `App.tsx` and `Sidebar.tsx` offset by it.
+- While switched in, `forbidImpersonation` refuses every non-GET on `/api/sales`,
+  `/api/returns` and `/api/inventory` with **403 `IMPERSONATION_FORBIDDEN`**: an admin must
+  never put a cashier's name on a receipt. Catalogue, department, staff and settings changes
+  are allowed and each one is written to `admin_actions` as `IMPERSONATED_WRITE` with the
+  method, path and status. The activity view labels a 403 as "Blocked", not as a change.
+- A store with no active owner cannot be switched into (the button says so).
 
 **Product archiving** (migration 8, `products.is_active`). A sold product cannot be deleted, so
 archiving is how it is retired: it leaves the catalogue and the register, stays reachable with

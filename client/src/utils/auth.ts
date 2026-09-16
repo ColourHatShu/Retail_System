@@ -22,6 +22,30 @@ export function setToken(token: string | null): void {
   }
 }
 
+/**
+ * The platform administrator's own token, kept apart from the store token so
+ * an admin and a cashier can each be signed in on the same browser without
+ * treading on each other.
+ */
+const ADMIN_TOKEN_KEY = 'nexus_admin_token';
+
+export function getAdminToken(): string | null {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // Private mode or blocked storage.
+  }
+}
+
 type Listener = () => void;
 const listeners = new Set<Listener>();
 

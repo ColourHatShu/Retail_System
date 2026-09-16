@@ -1,5 +1,18 @@
-import { Department, Product, StockMovement, Sale, User, Role, ReturnRecord, ReturnLineInput, ReturnQuote } from '../types';
-import { getToken, notifyUnauthorized } from './auth';
+import {
+  AdminAction,
+  Department,
+  PlatformAdmin,
+  Product,
+  ReturnLineInput,
+  ReturnQuote,
+  ReturnRecord,
+  Role,
+  Sale,
+  StockMovement,
+  Tenant,
+  User,
+} from '../types';
+import { getAdminToken, getToken, notifyUnauthorized } from './auth';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || '/api';
 
@@ -23,9 +36,9 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, options?: RequestInit, tokenOverride?: string | null): Promise<T> {
   let response: Response;
-  const token = getToken();
+  const token = tokenOverride === undefined ? getToken() : tokenOverride;
   try {
     response = await fetch(url, {
       ...options,
@@ -46,7 +59,7 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
     // Non-JSON body (e.g. a proxy error page); fall through to the status check.
   }
 
-  if (response.status === 401 && !AUTH_ENDPOINTS.includes(url)) {
+  if (response.status === 401 && !AUTH_ENDPOINTS.includes(url) && tokenOverride === undefined) {
     notifyUnauthorized();
   }
 
@@ -126,7 +139,7 @@ export const api = {
   getAuthStatus: () => fetchJson<{ needs_setup: boolean }>(`${API_BASE}/auth/status`),
   setupOwner: (data: { username: string; password: string; display_name: string }) =>
     post<SessionResult>('/auth/setup', data),
-  login: (data: { username: string; password: string }) => post<SessionResult>('/auth/login', data),
+  login: (data: { username: string; password: string; tenant?: string }) => post<SessionResult>('/auth/login', data),
   logout: () => post<{ message: string }>('/auth/logout', {}),
   me: () => fetchJson<User>(`${API_BASE}/auth/me`),
   changePassword: (data: { current_password: string; new_password: string }) =>
@@ -237,4 +250,59 @@ export const api = {
       total_adjusted_units: number;
       total_returned_units: number;
     }>(`${API_BASE}/movements/summary`),
+};
+
+// ---------------------------------------------------------------------------
+// Platform administrator. A separate client with its own token: an admin's
+// 401 must never sign the store's cashier out, and vice versa.
+// ---------------------------------------------------------------------------
+
+export interface AdminSessionResult {
+  admin: PlatformAdmin;
+  token: string;
+  expires_at: string;
+  acting_tenant: Tenant | null;
+}
+
+export interface TenantCreateInput {
+  slug: string;
+  name: string;
+  owner_username: string;
+  owner_display_name: string;
+  owner_password: string;
+  currency?: string;
+}
+
+const adminFetch = <T>(path: string, options?: RequestInit) =>
+  fetchJson<T>(`${API_BASE}/admin${path}`, options, getAdminToken());
+const adminPost = <T>(path: string, body: unknown = {}) =>
+  adminFetch<T>(path, { method: 'POST', body: JSON.stringify(body) });
+const adminPut = <T>(path: string, body: unknown) => adminFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+
+export const adminApi = {
+  status: () => adminFetch<{ needs_setup: boolean }>('/status'),
+  setup: (data: { username: string; password: string; display_name: string }) =>
+    adminPost<AdminSessionResult>('/setup', data),
+  login: (data: { username: string; password: string }) => adminPost<AdminSessionResult>('/login', data),
+  logout: () => adminPost<{ message: string }>('/logout'),
+  me: () => adminFetch<{ admin: PlatformAdmin; acting_tenant: Tenant | null }>('/me'),
+
+  listTenants: () => adminFetch<Tenant[]>('/tenants'),
+  createTenant: (data: TenantCreateInput) => adminPost<Tenant>('/tenants', data),
+  updateTenant: (id: number, data: { name?: string; slug?: string }) => adminPut<Tenant>(`/tenants/${id}`, data),
+  deactivateTenant: (id: number) => adminPost<Tenant>(`/tenants/${id}/deactivate`),
+  reactivateTenant: (id: number) => adminPost<Tenant>(`/tenants/${id}/reactivate`),
+  resetOwnerPassword: (id: number, new_password: string) =>
+    adminPost<{ username: string }>(`/tenants/${id}/reset-owner-password`, { new_password }),
+
+  impersonate: (id: number) => adminPost<{ acting_tenant: Tenant }>(`/impersonate/${id}`),
+  stopImpersonating: () => adminPost<{ acting_tenant: null }>('/impersonate/stop'),
+
+  actions: (params?: { limit?: number; tenant_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.tenant_id !== undefined) qs.set('tenant_id', String(params.tenant_id));
+    const q = qs.toString();
+    return adminFetch<AdminAction[]>(`/actions${q ? `?${q}` : ''}`);
+  },
 };

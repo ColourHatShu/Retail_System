@@ -2,12 +2,52 @@ export type Role = 'OWNER' | 'MANAGER' | 'CASHIER';
 
 export interface User {
   id: number;
+  tenant_id: number;
   username: string;
   display_name: string;
   role: Role;
   is_active: boolean;
   created_at: string;
   last_login_at: string | null;
+  /** Present when a platform admin is switched into this store. */
+  acting_admin_id?: number;
+}
+
+// ---------- platform admin ----------
+
+export interface Tenant {
+  id: number;
+  slug: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  deactivated_at: string | null;
+  owner_username?: string;
+  user_count?: number;
+  product_count?: number;
+  sale_count?: number;
+  last_sale_at?: string | null;
+}
+
+export interface PlatformAdmin {
+  id: number;
+  username: string;
+  display_name: string;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface AdminAction {
+  id: number;
+  admin_id: number;
+  admin_username?: string;
+  action: string;
+  tenant_id: number | null;
+  tenant_name?: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+  created_at: string;
 }
 
 export interface Department {

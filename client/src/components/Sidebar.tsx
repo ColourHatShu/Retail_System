@@ -196,12 +196,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Desktop Fixed Left Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 fixed inset-y-0 left-0 z-30 shadow-xl">
+      <aside
+        className="hidden md:flex flex-col w-64 fixed bottom-0 left-0 z-30 shadow-xl"
+        style={{ top: 'var(--admin-banner, 0px)' }}
+      >
         <SidebarContent />
       </aside>
 
       {/* Mobile Top Header with Hamburger Toggle */}
-      <div className="md:hidden sticky top-0 z-30 bg-zinc-950 text-white border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+      <div
+        className="md:hidden sticky z-30 bg-zinc-950 text-white border-b border-zinc-800 px-4 py-3 flex items-center justify-between"
+        style={{ top: 'var(--admin-banner, 0px)' }}
+      >
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setMobileDrawerOpen(true)}
