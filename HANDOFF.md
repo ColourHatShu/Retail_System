@@ -59,8 +59,8 @@ already correct.
 | Barcode enrichment with caching | done, live |
 | Auto-created departments | done, live |
 | Product archiving | done, live |
-| Multi-seller tenancy (one database, row-level isolation) | done on `feature/multi-seller-admin`, **not deployed** |
-| Platform admin panel at `/admin` (create stores, switch in, activity log) | done on `feature/multi-seller-admin`, **not deployed** |
+| Multi-seller tenancy (one database, row-level isolation) | done, live (migration 9 applied 2026-09-16) |
+| Platform admin panel at `/admin` (create stores, switch in, activity log) | done, live |
 | Track B. Engineering hygiene | not started |
 
 Last verified: `tsc --noEmit` clean on both halves, client build clean, **89/89 server tests
