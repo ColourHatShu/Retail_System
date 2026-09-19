@@ -114,22 +114,29 @@ export const POSPage: React.FC<POSPageProps> = ({
     return tendered - total;
   }, [amountTendered, total]);
 
-  // Handle adding product to cart (or incrementing)
-  const addToCart = (product: Product) => {
+  // Handle adding product to cart (or incrementing). Returns whether the line
+  // actually made it onto the order, so callers can tell a real scan from a
+  // rejected one instead of reporting success either way.
+  const addToCart = (product: Product): boolean => {
     if (product.stock_quantity <= 0) {
       playScanErrorSound();
       alert(`"${product.name}" is out of stock!`);
-      return;
+      return false;
+    }
+
+    const existing = cart.find((item) => item.product.id === product.id);
+    if (existing && existing.quantity >= product.stock_quantity) {
+      playScanErrorSound();
+      alert(`Maximum available stock reached (${product.stock_quantity})`);
+      return false;
     }
 
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          playScanErrorSound();
-          alert(`Maximum available stock reached (${product.stock_quantity})`);
-          return prev;
-        }
+      const line = prev.find((item) => item.product.id === product.id);
+      if (line) {
+        // Re-check against the freshest cart: the guard above read this
+        // render's copy, which a rapid double-scan can already have passed.
+        if (line.quantity >= product.stock_quantity) return prev;
         return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
@@ -140,6 +147,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       }
     });
     playScanSuccessSound();
+    return true;
   };
 
   const updateQuantity = (productId: number, delta: number) => {
@@ -185,12 +193,15 @@ export const POSPage: React.FC<POSPageProps> = ({
 
     const found = products.find((p) => p.barcode === clean);
     if (found) {
-      addToCart(found);
-      setScanToast({
-        type: 'success',
-        text: `✓ Added "${found.name}" ($${Number(found.price).toFixed(2)}) to order`,
-      });
-      setTimeout(() => setScanToast(null), 3500);
+      // Only cheer if the line was really added; a rejected out-of-stock scan
+      // already tells the cashier what went wrong.
+      if (addToCart(found)) {
+        setScanToast({
+          type: 'success',
+          text: `Added "${found.name}" ($${Number(found.price).toFixed(2)}) to order`,
+        });
+        setTimeout(() => setScanToast(null), 3500);
+      }
     } else {
       playScanErrorSound();
       setScannerOpen(false);
@@ -211,12 +222,14 @@ export const POSPage: React.FC<POSPageProps> = ({
       setProductModalOpen(false);
       setShowUnregisteredPrompt(false);
       setUnregisteredBarcode(null);
-      // Automatically add newly registered product to cart
-      addToCart(created);
-      playScanSuccessSound();
+      // Automatically add newly registered product to cart. addToCart owns the
+      // scan sound, so don't claim the line landed when it refused it.
+      const added = addToCart(created);
       setScanToast({
         type: 'success',
-        text: `✓ Product "${created.name}" registered and added to order`,
+        text: added
+          ? `Product "${created.name}" registered and added to order`
+          : `Product "${created.name}" registered`,
       });
       setTimeout(() => setScanToast(null), 3500);
     } catch (err: any) {
@@ -298,7 +311,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       playScanSuccessSound();
       setScanToast({
         type: 'success',
-        text: '✓ Sample bottles & beverages added to inventory catalog',
+        text: 'Sample bottles & beverages added to inventory catalog',
       });
       setTimeout(() => setScanToast(null), 3500);
     } catch (err: any) {
@@ -416,7 +429,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search product, barcode, SKU..."
-                  className="w-full pl-9 pr-3 py-2 sm:py-2.5 text-xs sm:text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white placeholder:text-zinc-400 transition-colors"
+                  className="w-full pl-9 pr-3 py-2 sm:py-2.5 text-xs sm:text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white placeholder:text-zinc-500 transition-colors"
                 />
               </div>
 
@@ -462,7 +475,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                         style={{ backgroundColor: dept.color || '#4f46e5' }}
                       />
                       <span>{dept.name}</span>
-                      <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
+                      <span className="text-xs opacity-70">({dept.product_count || 0})</span>
                     </button>
                   );
                 })}
@@ -474,7 +487,7 @@ export const POSPage: React.FC<POSPageProps> = ({
           <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-xs overflow-hidden w-full max-w-full min-w-0">
             <div className="w-full max-w-full overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
+                <thead className="bg-zinc-50/90 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[11px]">
                   <tr>
                     <th className="py-2.5 sm:py-3 px-2.5 sm:px-4">Product</th>
                     <th className="hidden md:table-cell py-3 px-4">Barcode / SKU</th>
@@ -506,7 +519,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                             {p.name}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5 md:hidden">
-                            <span className="font-mono text-[10px] text-zinc-400 truncate max-w-[80px]">
+                            <span className="font-mono text-xs text-zinc-500 truncate max-w-[80px]">
                               {p.barcode}
                             </span>
                             {p.department_name && (
@@ -516,13 +529,13 @@ export const POSPage: React.FC<POSPageProps> = ({
                                   style={{ backgroundColor: p.department_color || '#4f46e5' }}
                                   title={p.department_name}
                                 />
-                                <span className="text-[10px] text-zinc-400 sm:hidden truncate max-w-[70px]">
+                                <span className="text-xs text-zinc-500 sm:hidden truncate max-w-[70px]">
                                   {p.department_name}
                                 </span>
                               </>
                             )}
                           </div>
-                          <span className="text-[11px] text-zinc-400 font-normal hidden md:inline">
+                          <span className="text-[11px] text-zinc-500 font-normal hidden md:inline">
                             Sold per {p.unit || 'pcs'}
                           </span>
                         </td>
@@ -534,7 +547,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                             <span>{p.barcode}</span>
                           </div>
                           {p.sku && (
-                            <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 py-0.2 rounded mt-0.5 inline-block">
+                            <span className="text-xs font-mono text-zinc-500 bg-zinc-100 px-1 py-0.5 rounded mt-0.5 inline-block">
                               {p.sku}
                             </span>
                           )}
@@ -543,7 +556,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                         {/* Department Badge (Tablet & Desktop) */}
                         <td className="hidden sm:table-cell py-3 px-4 whitespace-nowrap">
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
                             style={{
                               backgroundColor: `${p.department_color || '#4f46e5'}15`,
                               color: p.department_color || '#4f46e5',
@@ -559,7 +572,7 @@ export const POSPage: React.FC<POSPageProps> = ({
 
                         {/* Unit Price */}
                         <td className="py-2.5 sm:py-3 px-2 sm:px-4 text-right whitespace-nowrap">
-                          <span className="text-xs sm:text-sm font-extrabold text-zinc-950 font-mono">
+                          <span className="text-xs sm:text-sm font-extrabold text-zinc-950 tabular-nums">
                             ${Number(p.price).toFixed(2)}
                           </span>
                         </td>
@@ -568,7 +581,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                         <td className="py-2.5 sm:py-3 px-1.5 sm:px-4 text-center whitespace-nowrap">
                           <div className="inline-flex flex-col items-center">
                             <span
-                              className={`px-1.5 sm:px-2 py-0.5 rounded-md font-mono text-[10px] sm:text-xs font-bold ${
+                              className={`px-1.5 sm:px-2 py-0.5 rounded-md tabular-nums text-xs font-bold ${
                                 isOutOfStock
                                   ? 'bg-rose-100 text-rose-800'
                                   : isLowStock
@@ -579,12 +592,12 @@ export const POSPage: React.FC<POSPageProps> = ({
                               {p.stock_quantity} {p.unit}
                             </span>
                             {isLowStock && (
-                              <span className="text-[9px] text-amber-600 font-semibold mt-0.5">
+                              <span className="text-xs text-amber-600 font-semibold mt-0.5">
                                 Low
                               </span>
                             )}
                             {isOutOfStock && (
-                              <span className="text-[9px] text-rose-600 font-semibold mt-0.5">
+                              <span className="text-xs text-rose-600 font-semibold mt-0.5">
                                 Out
                               </span>
                             )}
@@ -600,6 +613,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                               addToCart(p);
                             }}
                             disabled={isOutOfStock}
+                            aria-label={`Add ${p.name} to order`}
                             className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl shadow-2xs transition-all ${
                               isOutOfStock
                                 ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
@@ -655,7 +669,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 <div className="p-10 text-center text-zinc-400">
                   <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
                   <p className="text-sm font-semibold text-zinc-700">No items match your search</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">
+                  <p className="text-xs text-zinc-500 mt-0.5">
                     Try searching by a different barcode or select 'All Departments'.
                   </p>
                 </div>
@@ -693,7 +707,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 placeholder="Customer Name (e.g. Walk-in Customer)"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 placeholder:text-zinc-400 font-medium"
+                className="w-full px-3 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-zinc-900 placeholder:text-zinc-500 font-medium"
               />
             </div>
 
@@ -703,7 +717,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 <div className="h-56 flex flex-col items-center justify-center text-center text-zinc-400">
                   <ShoppingBag className="w-9 h-9 stroke-1 mb-2 text-zinc-300" />
                   <p className="text-xs font-semibold text-zinc-700">Cart is empty</p>
-                  <p className="text-[11px] text-zinc-400 mt-0.5 max-w-[200px]">
+                  <p className="text-[11px] text-zinc-500 mt-0.5 max-w-[200px]">
                     Click any item in the table or scan a barcode to add to order
                   </p>
                 </div>
@@ -714,7 +728,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                       <h4 className="text-xs font-semibold text-zinc-900 truncate">
                         {item.product.name}
                       </h4>
-                      <p className="text-[10px] text-zinc-400 font-mono">
+                      <p className="text-xs text-zinc-500 tabular-nums">
                         ${item.unit_price.toFixed(2)} / {item.product.unit}
                       </p>
                     </div>
@@ -723,15 +737,17 @@ export const POSPage: React.FC<POSPageProps> = ({
                     <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg">
                       <button
                         onClick={() => updateQuantity(item.product.id, -1)}
+                        aria-label={`Decrease quantity of ${item.product.name}`}
                         className="w-5 h-5 flex items-center justify-center rounded text-zinc-600 hover:bg-white hover:text-zinc-950 transition-colors"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-6 text-center text-xs font-bold text-zinc-900 font-mono">
+                      <span className="w-6 text-center text-xs font-bold text-zinc-900 tabular-nums">
                         {item.quantity}
                       </span>
                       <button
                         onClick={() => updateQuantity(item.product.id, 1)}
+                        aria-label={`Increase quantity of ${item.product.name}`}
                         className="w-5 h-5 flex items-center justify-center rounded text-zinc-600 hover:bg-white hover:text-zinc-950 transition-colors"
                       >
                         <Plus className="w-3 h-3" />
@@ -740,13 +756,14 @@ export const POSPage: React.FC<POSPageProps> = ({
 
                     {/* Total Price */}
                     <div className="text-right min-w-[55px]">
-                      <span className="text-xs font-extrabold text-zinc-950 font-mono">
+                      <span className="text-xs font-extrabold text-zinc-950 tabular-nums">
                         ${(item.unit_price * item.quantity).toFixed(2)}
                       </span>
                     </div>
 
                     <button
                       onClick={() => removeFromCart(item.product.id)}
+                      aria-label={`Remove ${item.product.name} from order`}
                       className="p-1 text-zinc-300 hover:text-rose-600 rounded"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -761,15 +778,15 @@ export const POSPage: React.FC<POSPageProps> = ({
               <div className="space-y-1.5 text-xs text-zinc-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-zinc-900 font-mono">${subtotal.toFixed(2)}</span>
+                  <span className="font-semibold text-zinc-900 tabular-nums">${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tax ({taxRate}%)</span>
-                  <span className="font-mono">${taxAmount.toFixed(2)}</span>
+                  <span className="tabular-nums">${taxAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-base font-black text-zinc-950 pt-2 border-t border-zinc-200">
                   <span>Total</span>
-                  <span className="font-mono">${total.toFixed(2)}</span>
+                  <span className="tabular-nums">${total.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -795,13 +812,13 @@ export const POSPage: React.FC<POSPageProps> = ({
           >
             <div className="relative">
               <ShoppingBag className="w-5 h-5 text-zinc-900" />
-              <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-zinc-900 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-zinc-900 text-white rounded-full text-xs font-bold flex items-center justify-center">
                 {cart.reduce((s, i) => s + i.quantity, 0)}
               </span>
             </div>
             <div>
-              <p className="text-xs font-bold text-zinc-950 font-mono">${total.toFixed(2)}</p>
-              <p className="text-[10px] text-zinc-400">View items</p>
+              <p className="text-xs font-bold text-zinc-950 tabular-nums">${total.toFixed(2)}</p>
+              <p className="text-xs text-zinc-500">View items</p>
             </div>
           </button>
 
@@ -835,7 +852,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                 <div key={item.product.id} className="py-2.5 flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-semibold text-zinc-900">{item.product.name}</h4>
-                    <span className="text-[11px] text-zinc-400">
+                    <span className="text-[11px] text-zinc-500 tabular-nums">
                       ${item.unit_price.toFixed(2)} each
                     </span>
                   </div>
@@ -843,19 +860,23 @@ export const POSPage: React.FC<POSPageProps> = ({
                     <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg">
                       <button
                         onClick={() => updateQuantity(item.product.id, -1)}
+                        aria-label={`Decrease quantity of ${item.product.name}`}
                         className="w-5 h-5 flex items-center justify-center text-zinc-600"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
+                      <span className="w-6 text-center text-xs font-bold tabular-nums">
+                        {item.quantity}
+                      </span>
                       <button
                         onClick={() => updateQuantity(item.product.id, 1)}
+                        aria-label={`Increase quantity of ${item.product.name}`}
                         className="w-5 h-5 flex items-center justify-center text-zinc-600"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                    <span className="text-xs font-bold w-12 text-right">
+                    <span className="text-xs font-bold w-12 text-right tabular-nums">
                       ${(item.unit_price * item.quantity).toFixed(2)}
                     </span>
                   </div>
@@ -896,7 +917,8 @@ export const POSPage: React.FC<POSPageProps> = ({
               </div>
               <button
                 onClick={() => setCheckoutModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-700"
+                aria-label="Close payment dialog"
+                className="text-zinc-500 hover:text-zinc-800"
               >
                 ✕
               </button>
@@ -915,10 +937,10 @@ export const POSPage: React.FC<POSPageProps> = ({
                 <span className="text-xs uppercase tracking-wider font-semibold text-zinc-500">
                   Total Amount Due
                 </span>
-                <div className="text-3xl font-black text-zinc-950 font-mono mt-0.5">
+                <div className="text-3xl font-black text-zinc-950 tabular-nums mt-0.5">
                   ${total.toFixed(2)}
                 </div>
-                <span className="text-[11px] text-zinc-400">
+                <span className="text-[11px] text-zinc-500 tabular-nums">
                   Tax included (${taxAmount.toFixed(2)})
                 </span>
               </div>
@@ -963,7 +985,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                     <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
                       Cash Received ($)
                     </label>
-                    <span className="text-xs font-bold text-emerald-600 font-mono">
+                    <span className="text-xs font-bold text-emerald-600 tabular-nums">
                       Change Due: ${changeDue.toFixed(2)}
                     </span>
                   </div>
@@ -973,7 +995,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                     min={total}
                     value={amountTendered}
                     onChange={(e) => setAmountTendered(e.target.value)}
-                    className="w-full px-3 py-2 text-lg font-bold font-mono bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900"
+                    className="w-full px-3 py-2 text-lg font-bold tabular-nums bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900"
                   />
 
                   <div className="flex gap-1.5 pt-1">
@@ -1055,7 +1077,7 @@ export const POSPage: React.FC<POSPageProps> = ({
             </div>
 
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
                 Barcode Detected
               </span>
               <h3 className="text-base font-bold text-zinc-900 mt-2 font-mono">

@@ -11,14 +11,39 @@ import {
   RefreshCw,
   ShieldAlert,
   VideoOff,
-  Sparkles,
+  Lightbulb,
+  Lock,
 } from 'lucide-react';
 import { playScanSuccessSound, playScanErrorSound } from '../utils/audio';
+
+/**
+ * What the caller reports back about a scan. Returning nothing (or `true`) means
+ * accepted, so existing callers keep working unchanged. Return `false` — or
+ * `{ accepted: false, message }` to show the reason inside the dialog — when the
+ * register refuses the item, so it never beeps success and then errors.
+ */
+export type BarcodeScanOutcome = void | boolean | { accepted: boolean; message?: string };
+
+// One window drives both the on-screen countdown and the same-code guard. When they
+// drift apart the cashier sees "Ready for next" while scans are still being swallowed.
+const SAME_CODE_COOLDOWN_MS = 3000;
+const SAME_CODE_COOLDOWN_SECONDS = SAME_CODE_COOLDOWN_MS / 1000;
+// Shorter floor between two *different* barcodes.
+const ANY_SCAN_COOLDOWN_MS = 1200;
+
+const normalizeOutcome = (outcome: unknown): { accepted: boolean; message?: string } => {
+  if (outcome === false) return { accepted: false };
+  if (outcome && typeof outcome === 'object' && 'accepted' in outcome) {
+    const result = outcome as { accepted: boolean; message?: string };
+    return { accepted: result.accepted !== false, message: result.message };
+  }
+  return { accepted: true };
+};
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onScan: (barcode: string) => void;
+  onScan: (barcode: string) => BarcodeScanOutcome | Promise<BarcodeScanOutcome>;
   title?: string;
   subtitle?: string;
   continuous?: boolean;
@@ -35,7 +60,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'PERMISSION' | 'NOT_FOUND' | 'IN_USE' | 'OTHER' | null>(null);
+  const [errorType, setErrorType] = useState<'PERMISSION' | 'NOT_FOUND' | 'IN_USE' | 'PHOTO' | 'OTHER' | null>(null);
+  const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isPhotoScanning, setIsPhotoScanning] = useState(false);
@@ -61,33 +87,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
   const scannerElementId = 'barcode-reader-view';
 
-  const onScanSuccess = (decodedText: string) => {
-    const cleanCode = decodedText ? decodedText.trim() : '';
-    if (!cleanCode) return;
-
-    const now = Date.now();
-
-    // 1. Guard against scans while locked in pause window
-    if (isScanLockedRef.current) {
-      return;
+  // The single place a scan becomes real: the caller decides, the dialog reacts. Nothing
+  // celebrates until the register has actually taken the item.
+  const commitScan = async (code: string): Promise<boolean> => {
+    let outcome: { accepted: boolean; message?: string };
+    try {
+      outcome = normalizeOutcome(await onScanRef.current(code));
+    } catch (e) {
+      console.warn('onScan handler threw:', e);
+      outcome = { accepted: false };
     }
 
-    // 2. Cooldown for the SAME barcode (3.5s) to prevent adding 20+ when holding one item
-    if (lastScannedCodeRef.current === cleanCode && now - lastScanTimeRef.current < 3500) {
-      return;
+    if (!outcome.accepted) {
+      playScanErrorSound();
+      setRejectedMessage(outcome.message || null);
+      return false;
     }
 
-    // 3. General cooldown between ANY consecutive scans (1.2s)
-    if (now - lastScanTimeRef.current < 1200) {
-      return;
-    }
-
-    // Lock immediately to prevent duplicate frames from triggering
-    isScanLockedRef.current = true;
-    lastScannedCodeRef.current = cleanCode;
-    lastScanTimeRef.current = now;
-
-    setLastScanned(cleanCode);
+    setRejectedMessage(null);
+    setLastScanned(code);
     playScanSuccessSound();
 
     // Mobile vibration feedback
@@ -97,23 +115,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       } catch {}
     }
 
-    onScanRef.current(cleanCode);
+    return true;
+  };
 
-    if (!continuous) {
-      cleanupScanner();
-      onClose();
-      return;
-    }
-
-    // Continuous mode: pause scanning for 3s so the item isn't re-scanned repeatedly
+  // Continuous mode: hold scanning for the same window the same-code guard uses so the
+  // item isn't re-scanned repeatedly and the countdown never lies about being ready.
+  const startPause = () => {
+    isScanLockedRef.current = true;
     setIsPaused(true);
-    setCooldownSeconds(3);
+    setCooldownSeconds(SAME_CODE_COOLDOWN_SECONDS);
 
     if (lockTimerRef.current) {
       clearInterval(lockTimerRef.current);
     }
 
-    let remaining = 3;
+    let remaining = SAME_CODE_COOLDOWN_SECONDS;
     lockTimerRef.current = setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
@@ -128,6 +144,50 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         setCooldownSeconds(remaining);
       }
     }, 1000);
+  };
+
+  const onScanSuccess = async (decodedText: string) => {
+    const cleanCode = decodedText ? decodedText.trim() : '';
+    if (!cleanCode) return;
+
+    const now = Date.now();
+
+    // 1. Guard against scans while locked in pause window
+    if (isScanLockedRef.current) {
+      return;
+    }
+
+    // 2. Cooldown for the SAME barcode to prevent adding 20+ when holding one item
+    if (lastScannedCodeRef.current === cleanCode && now - lastScanTimeRef.current < SAME_CODE_COOLDOWN_MS) {
+      return;
+    }
+
+    // 3. General cooldown between ANY consecutive scans (1.2s)
+    if (now - lastScanTimeRef.current < ANY_SCAN_COOLDOWN_MS) {
+      return;
+    }
+
+    // Lock immediately to prevent duplicate frames from triggering
+    isScanLockedRef.current = true;
+    lastScannedCodeRef.current = cleanCode;
+    lastScanTimeRef.current = now;
+
+    const accepted = await commitScan(cleanCode);
+
+    // Refused: no "Captured!", no countdown. Keep the same-code refs so the refused item
+    // stays quiet in front of the lens, but unlock so the next item scans immediately.
+    if (!accepted) {
+      isScanLockedRef.current = false;
+      return;
+    }
+
+    if (!continuous) {
+      cleanupScanner();
+      onClose();
+      return;
+    }
+
+    startPause();
   };
 
   const initScanner = async (preferredCameraId?: string) => {
@@ -340,6 +400,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
     setErrorMessage(null);
     setErrorType(null);
+    setRejectedMessage(null);
     setLastScanned(null);
     setIsPaused(false);
     setCooldownSeconds(0);
@@ -432,18 +493,23 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       }
 
       const decodedText = await scanner.scanFile(file, false);
-      if (decodedText && decodedText.trim()) {
-        playScanSuccessSound();
-        setLastScanned(decodedText.trim());
-        onScanRef.current(decodedText.trim());
-        if (!continuous) {
+      const cleanCode = decodedText ? decodedText.trim() : '';
+      if (cleanCode) {
+        // Feed the guards too, so the live camera can't immediately re-add the same item.
+        lastScannedCodeRef.current = cleanCode;
+        lastScanTimeRef.current = Date.now();
+
+        const accepted = await commitScan(cleanCode);
+        if (accepted && !continuous) {
           cleanupScanner();
           onClose();
         }
       }
-    } catch (err: any) {
+    } catch {
       playScanErrorSound();
-      alert('Could not find barcode in this photo. Please ensure the barcode is centered, in focus, and well-lit.');
+      // The dialog already owns an error surface; an alert() drops the cashier out of it.
+      setErrorType('PHOTO');
+      setErrorMessage('No barcode found in that photo. Center the barcode, hold steady and try again in better light.');
     } finally {
       setIsPhotoScanning(false);
       if (fileInputRef.current) {
@@ -476,31 +542,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = manualCode.trim();
     if (!clean) return;
 
     lastScannedCodeRef.current = clean;
     lastScanTimeRef.current = Date.now();
-    setLastScanned(clean);
 
-    playScanSuccessSound();
-    onScanRef.current(clean);
+    const accepted = await commitScan(clean);
+    // Keep what was typed on a refusal so the cashier can correct it instead of retyping.
+    if (!accepted) return;
+
     setManualCode('');
 
     if (!continuous) {
       cleanupScanner();
       onClose();
     } else {
-      setIsPaused(true);
-      setCooldownSeconds(2);
-      isScanLockedRef.current = true;
-      setTimeout(() => {
-        isScanLockedRef.current = false;
-        setIsPaused(false);
-        setCooldownSeconds(0);
-      }, 2000);
+      startPause();
     }
   };
 
@@ -529,6 +589,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 }}
                 className="text-[11px] font-medium bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 rounded-lg px-2 py-1 text-zinc-800 max-w-[130px] truncate focus:outline-none"
                 title="Switch Camera"
+                aria-label="Switch camera"
               >
                 {cameras.map((c, i) => (
                   <option key={c.id} value={c.id}>
@@ -543,7 +604,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 cleanupScanner();
                 onClose();
               }}
-              className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded-lg hover:bg-zinc-100 transition-colors"
+              className="p-1.5 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+              title="Close scanner"
+              aria-label="Close scanner"
             >
               <X className="w-5 h-5" />
             </button>
@@ -576,7 +639,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       <span className="text-xs font-bold text-white font-mono bg-zinc-950/80 px-2 py-0.5 rounded">
                         {lastScanned}
                       </span>
-                      <span className="text-[10px] font-semibold text-emerald-300">
+                      <span className="text-xs font-semibold text-emerald-300">
                         Captured!
                       </span>
                     </div>
@@ -585,30 +648,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               </div>
 
               {/* Status and instruction pill anchored at the bottom */}
-              <div className="absolute bottom-2.5 inset-x-0 flex flex-col items-center gap-1 text-center px-4 pointer-events-auto">
+              <div className="absolute bottom-2.5 inset-x-0 flex flex-col items-center gap-1 text-center px-4">
                 {isPaused ? (
-                  <div className="flex flex-col items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-emerald-200 bg-zinc-900/95 px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>Paused ({cooldownSeconds}s) to prevent double-scan</span>
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={handleUnlockNow}
-                      className="px-3.5 py-1.5 bg-emerald-400 hover:bg-emerald-300 text-zinc-950 text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
-                    >
-                      <Zap className="w-3.5 h-3.5 fill-current" />
-                      <span>Scan Next Item Now</span>
-                    </button>
-                  </div>
+                  /* The "Resume" control lives in the banner below, which is on screen in
+                     every paused state — including camera-error / manual entry. */
+                  <span className="text-[11px] font-semibold text-emerald-200 bg-zinc-900/95 px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Paused ({cooldownSeconds}s) to prevent double-scan</span>
+                  </span>
                 ) : (
                   <>
                     <span className="text-[11px] font-bold text-emerald-300 bg-zinc-900/90 px-3 py-1 rounded-full border border-emerald-500/30 shadow-xs">
                       Align barcode along the green line
                     </span>
-                    <span className="text-[10px] text-zinc-300 bg-black/70 px-2.5 py-0.5 rounded backdrop-blur-xs">
-                      💡 Bottles / Cans: Hold barcode horizontally across the line
+                    <span className="text-xs text-zinc-300 bg-black/70 px-2.5 py-0.5 rounded backdrop-blur-xs flex items-center gap-1.5">
+                      <Lightbulb className="w-3 h-3 text-amber-300 shrink-0" aria-hidden="true" />
+                      <span>Bottles / Cans: Hold barcode horizontally across the line</span>
                     </span>
                   </>
                 )}
@@ -623,6 +678,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md transition-colors ${
                 torchOn ? 'bg-amber-400 text-zinc-950 shadow-md' : 'bg-zinc-900/70 text-white hover:bg-zinc-800'
               }`}
+              title={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
+              aria-label={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
+              aria-pressed={torchOn}
             >
               <Flashlight className="w-4 h-4" />
             </button>
@@ -649,6 +707,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     ? 'Camera Is In Use'
                     : errorType === 'NOT_FOUND'
                     ? 'No Camera Found'
+                    : errorType === 'PHOTO'
+                    ? 'No Barcode In That Photo'
                     : 'Camera Unavailable'}
                 </h4>
                 <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
@@ -664,7 +724,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   </div>
                   <ul className="space-y-1.5 text-[11px] text-zinc-300 list-disc list-inside">
                     <li>
-                      <strong className="text-white">Android / Chrome:</strong> Tap the 🔒 lock or ⚙️ tune icon next to the website URL at the top → <strong className="text-emerald-400">Permissions</strong> → <strong className="text-emerald-400">Camera</strong> → choose <strong className="text-emerald-400">Allow</strong>.
+                      <strong className="text-white">Android / Chrome:</strong> Tap the{' '}
+                      <Lock className="inline-block w-3 h-3 align-[-1px]" aria-hidden="true" /> lock or tune icon next to the website URL at the top → <strong className="text-emerald-400">Permissions</strong> → <strong className="text-emerald-400">Camera</strong> → choose <strong className="text-emerald-400">Allow</strong>.
                     </li>
                     <li>
                       <strong className="text-white">iPhone / Safari:</strong> Tap the <strong className="text-white font-serif">aA</strong> icon in the address bar → <strong className="text-emerald-400">Website Settings</strong> → <strong className="text-emerald-400">Camera: Allow</strong>.
@@ -729,10 +790,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 <span>Resume ({cooldownSeconds}s)</span>
               </button>
             ) : (
-              <span className="text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded font-semibold text-emerald-800">
+              <span className="text-xs bg-emerald-200/80 px-2 py-0.5 rounded font-semibold text-emerald-800">
                 Ready for next
               </span>
             )}
+          </div>
+        )}
+
+        {/* Refused scan: the register said no, so say why here instead of beeping success */}
+        {rejectedMessage && (
+          <div
+            role="alert"
+            className="bg-rose-50 border-y border-rose-200 px-4 py-2 flex items-center gap-2 text-xs text-rose-800"
+          >
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>{rejectedMessage}</span>
           </div>
         )}
 
@@ -761,7 +833,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
                     placeholder="Type barcode digits & press Enter..."
-                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 placeholder:text-zinc-400 font-mono"
+                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 placeholder:text-zinc-500 font-mono"
+                    aria-label="Barcode"
                     autoFocus={!!errorMessage}
                   />
                 </div>
@@ -777,6 +850,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     onClick={() => setShowManualInput(false)}
                     className="px-2.5 py-2 text-xs text-zinc-500 hover:text-zinc-800 bg-zinc-200/70 hover:bg-zinc-200 rounded-xl transition-colors"
                     title="Close manual entry"
+                    aria-label="Close manual entry"
                   >
                     <X className="w-4 h-4" />
                   </button>

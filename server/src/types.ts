@@ -225,6 +225,7 @@ export interface SaleRow {
   cashier_id: number | null;
   cashier_name?: string | null;
   created_at: string;
+  /** Units on the sale (sum of line quantities), not the number of lines. */
   item_count?: number;
   refunded_cents?: number;
 }
@@ -325,6 +326,7 @@ export interface Sale {
   cashier_name: string | null;
   refunded_total: number;
   created_at: string;
+  /** Units on the sale (sum of line quantities), not the number of lines. */
   item_count?: number;
   items?: SaleItem[];
 }
@@ -335,6 +337,8 @@ export interface Settings {
   tax_rate_bps: number;
   return_window_days: number;
   refund_approval_threshold_cents: number;
+  /** IANA zone the shop trades in; decides which calendar day a receipt belongs to. */
+  timezone: string;
 }
 
 export interface Pagination {

@@ -134,6 +134,31 @@ export interface SessionResult {
   expires_at: string;
 }
 
+/**
+ * One filter shape for the ledger list, its summary cards and the CSV export.
+ * The server applies the same filter to all three, so passing the page's current
+ * filters to each keeps the numbers, the rows and the download in agreement.
+ */
+export interface MovementFilters {
+  product_id?: number | string;
+  department_id?: number | string;
+  type?: string;
+  search?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface MovementSummary {
+  total_movements: number;
+  total_sold_units: number;
+  total_restocked_units: number;
+  /** Corrections upward — not shrinkage. */
+  total_adjusted_added_units: number;
+  /** Corrections downward: the damage and write-off figure. */
+  total_adjusted_removed_units: number;
+  total_returned_units: number;
+}
+
 export const api = {
   // Authentication
   getAuthStatus: () => fetchJson<{ needs_setup: boolean }>(`${API_BASE}/auth/status`),
@@ -232,24 +257,15 @@ export const api = {
   getReturn: (id: number) => fetchJson<ReturnRecord>(`${API_BASE}/returns/${id}`),
 
   // Movement history
-  getMovements: (params?: {
-    product_id?: number | string;
-    department_id?: number | string;
-    type?: string;
-    search?: string;
-    start_date?: string;
-    end_date?: string;
-    limit?: number;
-    offset?: number;
-  }) => fetchJson<StockMovement[]>(withQuery('/movements', { ...params })),
-  getMovementSummary: () =>
-    fetchJson<{
-      total_movements: number;
-      total_sold_units: number;
-      total_restocked_units: number;
-      total_adjusted_units: number;
-      total_returned_units: number;
-    }>(`${API_BASE}/movements/summary`),
+  getMovements: (params?: MovementFilters & { limit?: number; offset?: number }) =>
+    fetchJson<StockMovement[]>(withQuery('/movements', { ...params })),
+  getMovementSummary: (params?: MovementFilters) =>
+    fetchJson<MovementSummary>(withQuery('/movements/summary', { ...params })),
+  /**
+   * The browser downloads the CSV itself, so this hands back a URL rather than
+   * fetching it. Pass the page's filters and the export matches what is on screen.
+   */
+  movementsExportUrl: (params?: MovementFilters) => withQuery('/movements/export-csv', { ...params }),
 };
 
 // ---------------------------------------------------------------------------

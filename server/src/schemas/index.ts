@@ -180,7 +180,11 @@ export type VoidSale = z.infer<typeof voidSale>;
 
 // ---------- movements ----------
 
-export const movementsQuery = pagination.extend({
+/**
+ * One filter shape for the ledger list, its summary cards and the CSV export,
+ * so all three always describe the same slice of the ledger.
+ */
+export const movementsFilter = z.object({
   product_id: optionalId,
   department_id: optionalId,
   type: z.preprocess((v) => (v === '' || v === 'ALL' ? undefined : v), z.enum(MOVEMENT_TYPES).optional()),
@@ -188,6 +192,9 @@ export const movementsQuery = pagination.extend({
   start_date: optionalText(30),
   end_date: optionalText(30),
 });
+export type MovementsFilter = z.infer<typeof movementsFilter>;
+
+export const movementsQuery = movementsFilter.merge(pagination);
 export type MovementsQuery = z.infer<typeof movementsQuery>;
 
 // ---------- auth & users ----------

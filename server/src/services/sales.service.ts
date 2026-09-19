@@ -16,7 +16,9 @@ import { getSettings } from './settings.service';
 const SALE_SELECT = `
   SELECT s.*,
          u.display_name AS cashier_name,
-         (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id) AS item_count,
+         -- Units, not lines: checkout merges repeat scans of one product into a
+         -- single row, so COUNT(*) would report three bottles of cola as "1".
+         (SELECT COALESCE(SUM(si.quantity), 0) FROM sale_items si WHERE si.sale_id = s.id) AS item_count,
          (SELECT COALESCE(SUM(r.refund_cents), 0) FROM returns r WHERE r.sale_id = s.id) AS refunded_cents
   FROM sales s
   LEFT JOIN users u ON u.id = s.cashier_id
@@ -107,8 +109,23 @@ export async function listSales(limit: number, offset: number): Promise<{ data: 
 // UPSERT takes a row lock on the day's counter, so concurrent writers serialise.
 // ---------------------------------------------------------------------------
 
+/**
+ * The shop's calendar day, not UTC's. West of Greenwich the evening shift is
+ * already tomorrow in UTC, so a UTC day would stamp a 19:00 sale with tomorrow's
+ * date and start tomorrow's counter mid-shift. en-CA renders exactly YYYY-MM-DD.
+ */
+function storeDay(timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 export async function nextDocumentNumber(tx: Queryable, prefix: 'REC' | 'RET'): Promise<string> {
-  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const { timezone } = await getSettings(tx);
+  const day = storeDay(timezone).replace(/-/g, '');
   const { value } = (await row<{ value: number }>(
     tx,
     `INSERT INTO sequences (name, value) VALUES ($1, 1)

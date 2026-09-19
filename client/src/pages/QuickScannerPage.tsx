@@ -9,7 +9,6 @@ import {
   Keyboard,
   History,
   RotateCcw,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { Product, StockMovement } from '../types';
@@ -23,7 +22,38 @@ interface QuickScannerPageProps {
   refreshData: () => Promise<void>;
 }
 
-type ScanMode = 'IN' | 'OUT' | 'COUNT';
+type ScanMode = 'IN' | 'OUT';
+
+interface ScanReason {
+  value: string;
+  label: string;
+  type: 'RESTOCK' | 'ADJUSTMENT_ADD' | 'ADJUSTMENT_REMOVE';
+}
+
+/**
+ * The reason decides the movement type. Only goods actually arriving are a RESTOCK, so
+ * undoing an over-count corrects the books instead of inflating deliveries, and the mirror
+ * case on the way out is a correction rather than another line of shrinkage.
+ */
+const STOCK_IN_REASONS: ScanReason[] = [
+  { value: 'Supplier Delivery', label: 'Supplier Delivery', type: 'RESTOCK' },
+  { value: 'Stock Transfer In', label: 'Transfer In / Other Store', type: 'RESTOCK' },
+  { value: 'Count Correction', label: 'Count Correction (Found Stock)', type: 'ADJUSTMENT_ADD' },
+  { value: 'Reversed Mis-Scan', label: 'Reversed Mis-Scan', type: 'ADJUSTMENT_ADD' },
+  { value: 'Other', label: 'Other (Custom)', type: 'ADJUSTMENT_ADD' },
+];
+
+const STOCK_OUT_REASONS: ScanReason[] = [
+  { value: 'Damaged / Broken', label: 'Damaged / Broken', type: 'ADJUSTMENT_REMOVE' },
+  { value: 'Expired', label: 'Expired', type: 'ADJUSTMENT_REMOVE' },
+  { value: 'Customer Return Defect', label: 'Defective Return', type: 'ADJUSTMENT_REMOVE' },
+  { value: 'Store Display / Sample', label: 'Store Display Sample', type: 'ADJUSTMENT_REMOVE' },
+  { value: 'Inventory Shrinkage', label: 'Shrinkage / Missing', type: 'ADJUSTMENT_REMOVE' },
+  { value: 'Other', label: 'Other (Custom)', type: 'ADJUSTMENT_REMOVE' },
+];
+
+// A single delivery routinely runs past 30 lines, so hold the whole session and say when it trims.
+const SESSION_LOG_LIMIT = 200;
 
 interface RecentScanLog {
   id: string;
@@ -44,6 +74,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
 }) => {
   const [mode, setMode] = useState<ScanMode>('IN');
   const [stepQuantity, setStepQuantity] = useState<number>(1);
+  const [restockReason, setRestockReason] = useState<string>('Supplier Delivery');
   const [deductReason, setDeductReason] = useState<string>('Damaged / Broken');
   const [customReason, setCustomReason] = useState<string>('');
   const [manualBarcode, setManualBarcode] = useState<string>('');
@@ -56,11 +87,22 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
   } | null>(null);
   const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [recentLogs, setRecentLogs] = useState<RecentScanLog[]>([]);
+  // Holds the last cleared session log so Clear stays reversible without a blocking prompt
+  const [clearedLogs, setClearedLogs] = useState<RecentScanLog[]>([]);
   const [continuousScan, setContinuousScan] = useState<boolean>(true);
 
   // Guards against rapid duplicate frames and concurrent network requests
   const isProcessingRef = useRef<boolean>(false);
   const lastScanRecordRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+
+  const activeReasons = mode === 'OUT' ? STOCK_OUT_REASONS : STOCK_IN_REASONS;
+  const selectedReason = mode === 'OUT' ? deductReason : restockReason;
+  const activeReason =
+    activeReasons.find((reason) => reason.value === selectedReason) ?? activeReasons[0];
+
+  // A scan count hides how much stock moved: twelve scans of ten units is not twelve units.
+  const unitsIn = recentLogs.reduce((sum, log) => (log.change > 0 ? sum + log.change : sum), 0);
+  const unitsOut = recentLogs.reduce((sum, log) => (log.change < 0 ? sum - log.change : sum), 0);
 
   const handleProcessScan = async (scannedBarcode: string) => {
     const code = scannedBarcode.trim();
@@ -85,70 +127,48 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
     setFeedback(null);
 
     try {
-      if (mode === 'IN') {
-        const result = await api.scanAdjustStock({
-          barcode: code,
-          change_quantity: stepQuantity,
-          type: 'RESTOCK',
-          reason: `Restock received (+${stepQuantity})`,
-        });
+      const finalReason =
+        activeReason.value === 'Other'
+          ? customReason.trim() || (mode === 'OUT' ? 'Manual adjustment' : 'Manual stock increase')
+          : activeReason.value;
+      const signedChange = mode === 'OUT' ? -stepQuantity : stepQuantity;
 
-        playScanSuccessSound();
-        setFeedback({
-          type: 'success',
-          product: result.product,
-          movement: result.movement,
-          message: `Stock increased by +${stepQuantity}`,
-        });
+      const result = await api.scanAdjustStock({
+        barcode: code,
+        change_quantity: stepQuantity,
+        type: activeReason.type,
+        reason: finalReason,
+      });
 
-        setRecentLogs((prev) => [
-          {
-            id: Math.random().toString(),
-            productName: result.product.name,
-            barcode: code,
-            departmentName: result.product.department_name || '',
-            change: stepQuantity,
-            before: result.movement.quantity_before,
-            after: result.movement.quantity_after,
-            type: 'RESTOCK',
-            reason: `Restock (+${stepQuantity})`,
-            timestamp: new Date().toLocaleTimeString(),
-          },
-          ...prev.slice(0, 19),
-        ]);
-      } else if (mode === 'OUT') {
-        const finalReason = deductReason === 'Other' ? (customReason || 'Manual adjustment') : deductReason;
-        const result = await api.scanAdjustStock({
+      playScanSuccessSound();
+      setFeedback({
+        type: 'success',
+        product: result.product,
+        movement: result.movement,
+        message:
+          signedChange > 0
+            ? `Stock increased by +${stepQuantity} (${finalReason})`
+            : `Stock decreased by -${stepQuantity} (${finalReason})`,
+      });
+
+      setRecentLogs((prev) => [
+        {
+          id: Math.random().toString(),
+          productName: result.product.name,
           barcode: code,
-          change_quantity: stepQuantity,
-          type: 'ADJUSTMENT_REMOVE',
+          departmentName: result.product.department_name || '',
+          change: signedChange,
+          before: result.movement.quantity_before,
+          after: result.movement.quantity_after,
+          type: activeReason.type,
           reason: finalReason,
-        });
-
-        playScanSuccessSound();
-        setFeedback({
-          type: 'success',
-          product: result.product,
-          movement: result.movement,
-          message: `Stock decreased by -${stepQuantity} (${finalReason})`,
-        });
-
-        setRecentLogs((prev) => [
-          {
-            id: Math.random().toString(),
-            productName: result.product.name,
-            barcode: code,
-            departmentName: result.product.department_name || '',
-            change: -stepQuantity,
-            before: result.movement.quantity_before,
-            after: result.movement.quantity_after,
-            type: 'ADJUSTMENT_REMOVE',
-            reason: finalReason,
-            timestamp: new Date().toLocaleTimeString(),
-          },
-          ...prev.slice(0, 19),
-        ]);
-      }
+          timestamp: new Date().toLocaleTimeString(),
+        },
+        ...prev.slice(0, SESSION_LOG_LIMIT - 1),
+      ]);
+      // A new scan invalidates the undo buffer; restoring it would drop the row just added
+      setClearedLogs([]);
+      setManualBarcode('');
 
       await refreshData();
     } catch (err: any) {
@@ -157,10 +177,13 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         type: 'error',
         message: err.message || `Failed to process barcode "${code}"`,
       });
+      // Keep the code on screen so a mistyped or unknown barcode can be fixed and retried,
+      // and drop the duplicate guard so that retry is not swallowed as a rapid re-scan
+      setManualBarcode(code);
+      lastScanRecordRef.current = { code: '', time: 0 };
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
-      setManualBarcode('');
     }
   };
 
@@ -174,6 +197,16 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
     if (manualBarcode.trim()) {
       handleProcessScan(manualBarcode);
     }
+  };
+
+  const handleClearLogs = () => {
+    setClearedLogs(recentLogs);
+    setRecentLogs([]);
+  };
+
+  const handleUndoClear = () => {
+    setRecentLogs(clearedLogs);
+    setClearedLogs([]);
   };
 
   const handleOpenScanner = () => {
@@ -201,6 +234,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         <button
           type="button"
           onClick={() => setMode('IN')}
+          aria-pressed={mode === 'IN'}
           className={`p-3 sm:p-3.5 rounded-2xl border flex items-center justify-center gap-1.5 sm:gap-2 transition-all min-h-[48px] ${
             mode === 'IN'
               ? 'bg-emerald-600 text-white border-emerald-600 shadow-md font-bold'
@@ -214,6 +248,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         <button
           type="button"
           onClick={() => setMode('OUT')}
+          aria-pressed={mode === 'OUT'}
           className={`p-3 sm:p-3.5 rounded-2xl border flex items-center justify-center gap-1.5 sm:gap-2 transition-all min-h-[48px] ${
             mode === 'OUT'
               ? 'bg-rose-600 text-white border-rose-600 shadow-md font-bold'
@@ -239,6 +274,8 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
                   key={num}
                   type="button"
                   onClick={() => setStepQuantity(num)}
+                  aria-label={`${num} units per scan`}
+                  aria-pressed={stepQuantity === num}
                   className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
                     stepQuantity === num
                       ? 'bg-zinc-900 text-white shadow-xs'
@@ -260,57 +297,69 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
               <button
                 type="button"
                 onClick={() => setContinuousScan(true)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                aria-pressed={continuousScan}
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
                   continuousScan
                     ? 'bg-white text-zinc-950 font-bold shadow-2xs'
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
                 title="Camera stays open with a 3-second anti-duplicate pause between scans"
               >
-                ⚡ Multi-Scan (Paused)
+                <Zap className="w-3.5 h-3.5 flex-shrink-0" />
+                Multi-Scan (Paused)
               </button>
               <button
                 type="button"
                 onClick={() => setContinuousScan(false)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                aria-pressed={!continuousScan}
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
                   !continuousScan
                     ? 'bg-white text-zinc-950 font-bold shadow-2xs'
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
                 title="Camera automatically closes after scanning one product"
               >
-                🔒 Single (Auto-Close)
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                Single (Auto-Close)
               </button>
             </div>
           </div>
 
-          {/* Reason for Stock Out */}
-          {mode === 'OUT' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
-                Reason:
-              </span>
-              <select
-                value={deductReason}
-                onChange={(e) => setDeductReason(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-medium"
-              >
-                <option value="Damaged / Broken">Damaged / Broken</option>
-                <option value="Expired">Expired</option>
-                <option value="Customer Return Defect">Defective Return</option>
-                <option value="Store Display / Sample">Store Display Sample</option>
-                <option value="Inventory Shrinkage">Shrinkage / Missing</option>
-                <option value="Other">Other (Custom)</option>
-              </select>
-            </div>
-          )}
+          {/* Reason — also decides how the movement is filed, so the ledger stays honest */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
+              Reason:
+            </span>
+            <select
+              value={selectedReason}
+              onChange={(e) =>
+                mode === 'OUT' ? setDeductReason(e.target.value) : setRestockReason(e.target.value)
+              }
+              aria-label={mode === 'OUT' ? 'Reason for stock out' : 'Reason for stock in'}
+              className="px-3 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-medium"
+            >
+              {activeReasons.map((reason) => (
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+              {activeReason.type === 'RESTOCK'
+                ? 'Files as restock'
+                : activeReason.type === 'ADJUSTMENT_ADD'
+                  ? 'Files as correction (+)'
+                  : 'Files as correction (-)'}
+            </span>
+          </div>
         </div>
 
-        {mode === 'OUT' && deductReason === 'Other' && (
+        {selectedReason === 'Other' && (
           <div>
             <input
               type="text"
               placeholder="Specify custom reason..."
+              aria-label="Custom reason"
               value={customReason}
               onChange={(e) => setCustomReason(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
@@ -327,6 +376,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
               value={manualBarcode}
               onChange={(e) => setManualBarcode(e.target.value)}
               placeholder="Ready for scan... (or type barcode and press Enter)"
+              aria-label="Barcode"
               disabled={isProcessing}
               className="w-full pl-9 pr-3 py-2.5 text-xs sm:text-sm font-mono bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white"
             />
@@ -368,7 +418,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
                 <h3 className="text-base font-bold text-zinc-950">
                   {feedback.product.name}
                 </h3>
-                <p className="text-xs font-mono text-zinc-400">
+                <p className="text-xs font-mono text-zinc-500">
                   Barcode: {feedback.product.barcode}
                 </p>
               </div>
@@ -376,16 +426,16 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
               {/* Stock delta block */}
               <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-200/80">
                 <div className="text-right">
-                  <span className="text-[10px] text-zinc-400 uppercase font-semibold block">
+                  <span className="text-[11px] text-zinc-500 uppercase font-semibold block">
                     Previous
                   </span>
-                  <span className="text-sm font-bold text-zinc-600 font-mono">
+                  <span className="text-sm font-bold text-zinc-600 tabular-nums">
                     {feedback.movement.quantity_before}
                   </span>
                 </div>
 
                 <div
-                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1 ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold tabular-nums flex items-center gap-1 ${
                     feedback.movement.quantity_change > 0
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-rose-100 text-rose-800'
@@ -396,10 +446,10 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-zinc-400 uppercase font-semibold block">
+                  <span className="text-[11px] text-zinc-500 uppercase font-semibold block">
                     Updated
                   </span>
-                  <span className="text-lg font-black text-zinc-950 font-mono">
+                  <span className="text-lg font-black text-zinc-950 tabular-nums">
                     {feedback.movement.quantity_after} {feedback.product.unit}
                   </span>
                 </div>
@@ -416,27 +466,45 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
 
       {/* Real-time Session Scan History */}
       <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-zinc-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-zinc-700" />
+        <div className="p-4 border-b border-zinc-100 flex items-center justify-between gap-3">
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+            <History className="w-4 h-4 text-zinc-700 flex-shrink-0" />
             <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
               Recent Session Scans ({recentLogs.length})
             </h3>
+            {recentLogs.length > 0 && (
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 tabular-nums">
+                +{unitsIn} / -{unitsOut} units
+              </span>
+            )}
+            {recentLogs.length >= SESSION_LOG_LIMIT && (
+              <span className="text-xs text-zinc-500">
+                latest {SESSION_LOG_LIMIT} only
+              </span>
+            )}
           </div>
-          {recentLogs.length > 0 && (
+          {recentLogs.length > 0 ? (
             <button
-              onClick={() => setRecentLogs([])}
-              className="text-xs text-zinc-400 hover:text-zinc-700"
+              onClick={handleClearLogs}
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-900 flex-shrink-0"
             >
               Clear
             </button>
-          )}
+          ) : clearedLogs.length > 0 ? (
+            <button
+              onClick={handleUndoClear}
+              className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900 flex-shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Undo clear ({clearedLogs.length})
+            </button>
+          ) : null}
         </div>
 
         {recentLogs.length === 0 ? (
-          <div className="p-8 text-center text-zinc-400">
+          <div className="p-8 text-center text-zinc-500">
             <p className="text-xs">No scans in this session yet.</p>
-            <p className="text-[11px] text-zinc-300 mt-0.5">
+            <p className="text-xs text-zinc-500 mt-0.5">
               Scanned items will appear here with before and after stock levels.
             </p>
           </div>
@@ -447,19 +515,19 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-zinc-900">{log.productName}</span>
-                    <span className="text-[10px] text-zinc-400 font-mono">[{log.barcode}]</span>
+                    <span className="text-xs text-zinc-500 font-mono">[{log.barcode}]</span>
                   </div>
-                  <div className="text-[11px] text-zinc-500 mt-0.5">
+                  <div className="text-xs text-zinc-500 mt-0.5">
                     {log.reason} • {log.timestamp}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-zinc-400 font-mono">
+                  <span className="text-zinc-500 tabular-nums">
                     {log.before} → <strong className="text-zinc-900">{log.after}</strong>
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                    className={`px-2 py-0.5 rounded tabular-nums font-bold text-xs ${
                       log.change > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}
                   >
@@ -478,7 +546,7 @@ export const QuickScannerPage: React.FC<QuickScannerPageProps> = ({
         onClose={() => setScannerModalOpen(false)}
         onScan={handleProcessScan}
         title={mode === 'IN' ? 'Scan to Stock In (+)' : 'Scan to Stock Out (-)'}
-        subtitle={`Adjusting stock by ${stepQuantity} unit(s) • ${
+        subtitle={`${stepQuantity} unit(s) • ${activeReason.label} • ${
           continuousScan ? 'Multi-scan with 3s anti-duplicate pause' : 'Auto-closes upon scan'
         }`}
         continuous={continuousScan}

@@ -8,10 +8,16 @@ interface UsersPageProps {
 }
 
 const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', CASHIER: 'Cashier' };
+
+/** Seconds are noise on a sign-in log; the day and the minute are what an owner checks. */
+const formatSignIn = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+/** Must match TABS_FOR_ROLE in components/Sidebar.tsx — staff pick a role from these words. */
 const ROLE_HELP: Record<Role, string> = {
-  OWNER: 'Everything, including staff, tax and currency settings',
-  MANAGER: 'Products, stock adjustments, imports and the audit ledger',
-  CASHIER: 'Sell at the register and view sales',
+  OWNER: 'Everything a manager can do, plus staff accounts and roles, and refunds past the return window',
+  MANAGER: 'Products, stock adjustments, imports, movement history and sales reports — but not staff',
+  CASHIER: 'The register and receipt refunds only — no inventory, movement history or sales reports',
 };
 
 export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
@@ -121,7 +127,7 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
           </select>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-zinc-500">{ROLE_HELP[form.role]}</p>
+          <p className="text-xs text-zinc-500">{ROLE_HELP[form.role]}</p>
           <button
             type="submit"
             disabled={creating}
@@ -135,17 +141,22 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
           <span className="text-sm font-bold text-zinc-900">Accounts ({users.length})</span>
-          <button onClick={load} className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded-lg" title="Refresh">
+          <button
+            onClick={load}
+            className="p-1.5 text-zinc-500 hover:text-zinc-900 rounded-lg"
+            title="Refresh"
+            aria-label="Refresh the account list"
+          >
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
         {loading ? (
-          <div className="p-6 text-xs text-zinc-400">Loading…</div>
+          <div className="p-6 text-xs text-zinc-500">Loading…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-zinc-50 text-[10px] uppercase tracking-wide text-zinc-500">
+              <thead className="bg-zinc-50 text-[11px] uppercase tracking-wide text-zinc-500">
                 <tr>
                   <th className="text-left px-4 py-2">Name</th>
                   <th className="text-left px-4 py-2">Username</th>
@@ -162,14 +173,15 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
                     <React.Fragment key={u.id}>
                       <tr className={u.is_active ? '' : 'opacity-60'}>
                         <td className="px-4 py-2.5 font-semibold text-zinc-900">
-                          {u.display_name} {isSelf && <span className="text-[10px] text-zinc-400">(you)</span>}
+                          {u.display_name} {isSelf && <span className="text-xs text-zinc-500">(you)</span>}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-600">{u.username}</td>
+                        <td className="px-4 py-2.5 text-zinc-600">{u.username}</td>
                         <td className="px-4 py-2.5">
                           <select
                             className="px-2 py-1 bg-zinc-50 border border-zinc-200 rounded-lg text-xs disabled:opacity-60"
                             value={u.role}
                             disabled={isSelf}
+                            aria-describedby={isSelf ? `own-role-${u.id}` : undefined}
                             onChange={(e) =>
                               run(
                                 () => api.updateUser(u.id, { role: e.target.value as Role }),
@@ -183,18 +195,23 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
                               </option>
                             ))}
                           </select>
+                          {isSelf && (
+                            <p id={`own-role-${u.id}`} className="mt-1 text-xs text-zinc-500">
+                              You can’t change your own role — another owner must.
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-2.5">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-xs ${
                               u.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
                             }`}
                           >
                             <ShieldCheck className="w-3 h-3" /> {u.is_active ? 'Active' : 'Deactivated'}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-zinc-500">
-                          {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never'}
+                        <td className="px-4 py-2.5 text-zinc-500 tabular-nums">
+                          {u.last_login_at ? formatSignIn(u.last_login_at) : 'Never'}
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center justify-end gap-1.5">
@@ -203,9 +220,13 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-700"
                               title="Reset password"
                             >
-                              <KeyRound className="w-3 h-3" /> Reset
+                              <KeyRound className="w-3 h-3" /> Reset password
                             </button>
-                            {!isSelf && (
+                            {isSelf ? (
+                              <span className="text-xs text-zinc-500">
+                                Another owner must deactivate your account
+                              </span>
+                            ) : (
                               <button
                                 onClick={() =>
                                   run(
@@ -242,7 +263,7 @@ export const UsersPage: React.FC<UsersPageProps> = ({ currentUser }) => {
                                 setResetFor(null);
                               }}
                             >
-                              <span className="text-[11px] text-zinc-600">New password for {u.display_name}:</span>
+                              <span className="text-xs text-zinc-600">New password for {u.display_name}:</span>
                               <input
                                 className="px-3 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg"
                                 type="password"

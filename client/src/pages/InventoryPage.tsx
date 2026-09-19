@@ -67,6 +67,10 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
     return { totalStock, totalValuation, lowStockCount, outOfStockCount };
   }, [products]);
 
+  // Anything the shopkeeper has to act on — drives both the toggle count and
+  // whether the alert styling is earned at all.
+  const alertCount = stats.lowStockCount + stats.outOfStockCount;
+
   // Quick Stock Step (+1 or -1) directly from inventory table
   const handleQuickAdjust = async (product: Product, delta: number) => {
     try {
@@ -177,8 +181,8 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Catalog Items
           </span>
-          <div className="text-xl font-bold text-zinc-950 mt-1">{products.length}</div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">
+          <div className="text-xl font-bold text-zinc-950 mt-1 tabular-nums">{products.length}</div>
+          <span className="text-xs text-zinc-500 mt-0.5 block">
             Across {departments.length} departments
           </span>
         </div>
@@ -187,36 +191,57 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Total Stock On Hand
           </span>
-          <div className="text-xl font-bold text-zinc-950 mt-1 font-mono">
+          <div className="text-xl font-bold text-zinc-950 mt-1 tabular-nums">
             {stats.totalStock.toLocaleString()}
           </div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">Individual units</span>
+          <span className="text-xs text-zinc-500 mt-0.5 block">Individual units</span>
         </div>
 
         <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Inventory Valuation
           </span>
-          <div className="text-xl font-bold text-emerald-700 mt-1">
+          <div className="text-xl font-bold text-emerald-700 mt-1 tabular-nums">
             ${stats.totalValuation.toFixed(2)}
           </div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">At retail price</span>
+          <span className="text-xs text-zinc-500 mt-0.5 block">At retail price</span>
         </div>
 
         <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-zinc-200/80 shadow-xs">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
             Stock Alerts
           </span>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xl font-bold text-amber-600">
-              {stats.lowStockCount} Low
-            </span>
-            <span className="text-zinc-300">•</span>
-            <span className="text-xl font-bold text-rose-600">
-              {stats.outOfStockCount} Out
-            </span>
-          </div>
-          <span className="text-[11px] text-zinc-400 mt-0.5 block">Requires replenishment</span>
+          {/* A shelf that is fully stocked is good news, not an alert — so the
+              warning palette only appears once a count has something in it. */}
+          {alertCount === 0 ? (
+            <>
+              <div className="text-xl font-bold text-zinc-950 mt-1">All stocked</div>
+              <span className="text-xs text-zinc-500 mt-0.5 block">
+                Nothing below its minimum
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mt-1">
+                <span
+                  className={`text-xl font-bold tabular-nums ${
+                    stats.lowStockCount > 0 ? 'text-amber-600' : 'text-zinc-500'
+                  }`}
+                >
+                  {stats.lowStockCount} Low
+                </span>
+                <span className="text-zinc-300">•</span>
+                <span
+                  className={`text-xl font-bold tabular-nums ${
+                    stats.outOfStockCount > 0 ? 'text-rose-600' : 'text-zinc-500'
+                  }`}
+                >
+                  {stats.outOfStockCount} Out
+                </span>
+              </div>
+              <span className="text-xs text-zinc-500 mt-0.5 block">Requires replenishment</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -243,8 +268,10 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                 : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50'
             }`}
           >
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-            Low Stock Only ({stats.lowStockCount + stats.outOfStockCount})
+            <AlertTriangle
+              className={`w-3.5 h-3.5 ${alertCount > 0 ? 'text-amber-600' : 'text-zinc-500'}`}
+            />
+            Low Stock Only ({alertCount})
           </button>
         </div>
 
@@ -279,7 +306,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                     style={{ backgroundColor: dept.color || '#4f46e5' }}
                   />
                   <span>{dept.name}</span>
-                  <span className="text-[10px] opacity-70">({dept.product_count || 0})</span>
+                  <span className="text-xs font-normal tabular-nums">
+                    ({dept.product_count || 0})
+                  </span>
                 </button>
               );
             })}
@@ -291,7 +320,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-sm overflow-hidden w-full max-w-full min-w-0">
         <div className="overflow-x-auto w-full max-w-full">
           <table className="w-full min-w-[640px] text-left text-xs">
-            <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[10px]">
+            <thead className="bg-zinc-50/80 text-zinc-500 font-semibold border-b border-zinc-200 uppercase tracking-wider text-[11px]">
               <tr>
                 <th className="py-3.5 pl-4 pr-3">Product / Barcode</th>
                 <th className="py-3.5 px-3">Department</th>
@@ -313,12 +342,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                     <td className="py-3 pl-4 pr-3">
                       <div className="font-semibold text-zinc-900 text-xs">{p.name}</div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-mono text-[11px] text-zinc-500 flex items-center gap-1">
+                        <span className="font-mono text-xs text-zinc-500 flex items-center gap-1">
                           <BarcodeIcon className="w-3 h-3 text-zinc-400" />
                           {p.barcode}
                         </span>
                         {p.sku && (
-                          <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 rounded">
+                          <span className="text-xs font-mono text-zinc-500 bg-zinc-100 px-1 rounded">
                             {p.sku}
                           </span>
                         )}
@@ -327,15 +356,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
 
                     {/* Department Badge */}
                     <td className="py-3 px-3">
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{
-                          backgroundColor: `${p.department_color || '#4f46e5'}18`,
-                          color: p.department_color || '#4f46e5',
-                        }}
-                      >
+                      {/* Department colours are shopkeeper-chosen and the auto-created
+                          default is sky (#0ea5e9), which is unreadable as text on a tint
+                          of itself. The hue identifies the department as a dot; the name
+                          stays in ink so it can always be read. */}
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold text-zinc-700 bg-zinc-100 border border-zinc-200/80">
                         <span
-                          className="w-1.5 h-1.5 rounded-full"
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: p.department_color || '#4f46e5' }}
                         />
                         {p.department_name}
@@ -343,12 +370,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                     </td>
 
                     {/* Price */}
-                    <td className="py-3 px-3 text-right font-bold text-zinc-950">
+                    <td className="py-3 px-3 text-right font-bold text-zinc-950 tabular-nums">
                       ${Number(p.price).toFixed(2)}
                     </td>
 
                     {/* Cost */}
-                    <td className="py-3 px-3 text-right text-zinc-500">
+                    <td className="py-3 px-3 text-right text-zinc-500 tabular-nums">
                       ${Number(p.cost_price || 0).toFixed(2)}
                     </td>
 
@@ -356,7 +383,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                     <td className="py-3 px-3 text-center">
                       <div className="inline-flex flex-col items-center">
                         <span
-                          className={`px-2 py-0.5 rounded-md font-mono text-xs font-bold ${
+                          className={`px-2 py-0.5 rounded-md tabular-nums text-xs font-bold ${
                             isOutOfStock
                               ? 'bg-rose-100 text-rose-700'
                               : isLowStock
@@ -367,12 +394,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                           {p.stock_quantity} {p.unit}
                         </span>
                         {isLowStock && (
-                          <span className="text-[9px] text-amber-600 font-semibold mt-0.5">
+                          <span className="text-xs text-amber-600 font-semibold mt-0.5 tabular-nums">
                             Min: {p.min_stock_level}
                           </span>
                         )}
                         {isOutOfStock && (
-                          <span className="text-[9px] text-rose-600 font-semibold mt-0.5">
+                          <span className="text-xs text-rose-600 font-semibold mt-0.5">
                             Out of Stock
                           </span>
                         )}
@@ -406,8 +433,9 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                       <div className="inline-flex items-center gap-1">
                         <button
                           onClick={() => setLabelProduct(p)}
-                          className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                          className="p-1.5 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
                           title="Generate and print barcode label"
+                          aria-label={`Generate and print barcode label for ${p.name}`}
                         >
                           <Printer className="w-3.5 h-3.5" />
                         </button>
@@ -416,15 +444,17 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                             setEditingProduct(p);
                             setProductModalOpen(true);
                           }}
-                          className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
+                          className="p-1.5 text-zinc-500 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition-colors"
                           title="Edit product"
+                          aria-label={`Edit ${p.name}`}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteProduct(p.id, p.name)}
-                          className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                          className="p-1.5 text-zinc-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
                           title="Delete product"
+                          aria-label={`Delete ${p.name}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -459,10 +489,10 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
               </div>
             </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="p-12 text-center text-zinc-400">
+            <div className="p-12 text-center text-zinc-500">
               <BarcodeIcon className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
               <p className="text-sm font-semibold text-zinc-700">No products match your filters</p>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-zinc-500 mt-0.5">
                 Try clearing search filters or add a new product.
               </p>
             </div>

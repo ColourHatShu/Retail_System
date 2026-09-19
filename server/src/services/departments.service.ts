@@ -21,7 +21,9 @@ export async function listDepartments(db: Queryable = currentDb()): Promise<Depa
             COALESCE(SUM(p.stock_quantity), 0) AS total_stock,
             COALESCE(SUM(p.stock_quantity * p.price_cents), 0) AS inventory_value_cents
      FROM departments d
-     LEFT JOIN products p ON p.department_id = d.id
+     -- Archived products are out of the catalogue, so they must not inflate the
+     -- chip counts or the valuation either; listProducts hides them the same way.
+     LEFT JOIN products p ON p.department_id = d.id AND p.is_active
      GROUP BY d.id
      ORDER BY d.name ASC`,
   );

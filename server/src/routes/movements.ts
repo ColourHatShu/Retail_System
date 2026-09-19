@@ -13,12 +13,13 @@ movementRouter.get('/', validate({ query: s.movementsQuery }), async (_req, res)
   res.json({ success: true, ...(await movements.listMovements(input<s.MovementsQuery>(res, 'query'))) });
 });
 
-movementRouter.get('/summary', async (_req, res) => {
-  res.json({ success: true, data: await movements.getMovementSummary() });
+/** Same filter as the list: the cards summarise the rows the user is looking at. */
+movementRouter.get('/summary', validate({ query: s.movementsFilter }), async (_req, res) => {
+  res.json({ success: true, data: await movements.getMovementSummary(input<s.MovementsFilter>(res, 'query')) });
 });
 
-movementRouter.get('/export-csv', async (_req, res) => {
-  const csv = await movements.exportMovementsCsv();
+movementRouter.get('/export-csv', validate({ query: s.movementsFilter }), async (_req, res) => {
+  const csv = await movements.exportMovementsCsv(input<s.MovementsFilter>(res, 'query'));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="stock_movements_ledger.csv"');
   res.status(200).send(csv);

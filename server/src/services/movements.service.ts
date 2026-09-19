@@ -1,7 +1,13 @@
 import { currentDb, row, rows } from '../db';
-import type { MovementsQuery } from '../schemas';
+import type { MovementsFilter, MovementsQuery } from '../schemas';
 import type { Pagination, StockMovement, StockMovementRow } from '../types';
 import { serializeMovement } from './ledger';
+
+/** The ledger joined to its product — the least any filtered query needs. */
+const MOVEMENT_FROM = `
+  FROM stock_movements m
+  JOIN products p ON p.id = m.product_id
+`;
 
 const MOVEMENT_SELECT = `
   SELECT
@@ -16,13 +22,13 @@ const MOVEMENT_SELECT = `
     d.code         AS department_code,
     d.color        AS department_color,
     u.display_name AS user_name
-  FROM stock_movements m
-  JOIN products p ON p.id = m.product_id
+  ${MOVEMENT_FROM}
   JOIN departments d ON d.id = p.department_id
   LEFT JOIN users u ON u.id = m.user_id
 `;
 
-function buildWhere(q: MovementsQuery): { where: string; params: unknown[] } {
+/** Every clause is written against the `m` / `p` aliases of MOVEMENT_FROM. */
+function buildWhere(q: MovementsFilter): { where: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
   const add = (clause: (n: number) => string, value: unknown) => {
@@ -50,11 +56,7 @@ export async function listMovements(q: MovementsQuery): Promise<{ data: StockMov
   const db = currentDb();
   const { where, params } = buildWhere(q);
 
-  const { total } = (await row<{ total: number }>(
-    db,
-    `SELECT COUNT(*) AS total FROM stock_movements m JOIN products p ON p.id = m.product_id ${where}`,
-    params,
-  ))!;
+  const { total } = (await row<{ total: number }>(db, `SELECT COUNT(*) AS total ${MOVEMENT_FROM} ${where}`, params))!;
 
   const list = await rows<StockMovementRow>(
     db,
@@ -69,20 +71,27 @@ export interface MovementSummary {
   total_movements: number;
   total_sold_units: number;
   total_restocked_units: number;
-  total_adjusted_units: number;
+  /** Corrections upward. Kept apart from removals: a recount that found stock is not shrinkage. */
+  total_adjusted_added_units: number;
+  /** Corrections downward — the damage and shrinkage figure. */
+  total_adjusted_removed_units: number;
   total_returned_units: number;
 }
 
-export async function getMovementSummary(): Promise<MovementSummary> {
+/** Takes the same filter as listMovements so the cards describe the rows on screen. */
+export async function getMovementSummary(q: MovementsFilter): Promise<MovementSummary> {
+  const { where, params } = buildWhere(q);
   return (await row<MovementSummary>(
     currentDb(),
     `SELECT
        COUNT(*) AS total_movements,
-       COALESCE(SUM(CASE WHEN type = 'SALE' THEN -quantity_change ELSE 0 END), 0) AS total_sold_units,
-       COALESCE(SUM(CASE WHEN type = 'RESTOCK' THEN quantity_change ELSE 0 END), 0) AS total_restocked_units,
-       COALESCE(SUM(CASE WHEN type IN ('ADJUSTMENT_ADD', 'ADJUSTMENT_REMOVE') THEN ABS(quantity_change) ELSE 0 END), 0) AS total_adjusted_units,
-       COALESCE(SUM(CASE WHEN type = 'RETURN' THEN quantity_change ELSE 0 END), 0) AS total_returned_units
-     FROM stock_movements`,
+       COALESCE(SUM(CASE WHEN m.type = 'SALE' THEN -m.quantity_change ELSE 0 END), 0) AS total_sold_units,
+       COALESCE(SUM(CASE WHEN m.type = 'RESTOCK' THEN m.quantity_change ELSE 0 END), 0) AS total_restocked_units,
+       COALESCE(SUM(CASE WHEN m.type = 'ADJUSTMENT_ADD' THEN ABS(m.quantity_change) ELSE 0 END), 0) AS total_adjusted_added_units,
+       COALESCE(SUM(CASE WHEN m.type = 'ADJUSTMENT_REMOVE' THEN ABS(m.quantity_change) ELSE 0 END), 0) AS total_adjusted_removed_units,
+       COALESCE(SUM(CASE WHEN m.type = 'RETURN' THEN m.quantity_change ELSE 0 END), 0) AS total_returned_units
+     ${MOVEMENT_FROM} ${where}`,
+    params,
   ))!;
 }
 
@@ -99,8 +108,14 @@ function csvCell(value: unknown): string {
   return s;
 }
 
-export async function exportMovementsCsv(): Promise<string> {
-  const list = await rows<StockMovementRow>(currentDb(), `${MOVEMENT_SELECT} ORDER BY m.created_at DESC, m.id DESC`);
+/** Exports what the user is looking at, not the whole ledger — same filter as the list. */
+export async function exportMovementsCsv(q: MovementsFilter): Promise<string> {
+  const { where, params } = buildWhere(q);
+  const list = await rows<StockMovementRow>(
+    currentDb(),
+    `${MOVEMENT_SELECT} ${where} ORDER BY m.created_at DESC, m.id DESC`,
+    params,
+  );
 
   const header = [
     'ID', 'Date Time', 'Product Name', 'Barcode', 'Department', 'Type',

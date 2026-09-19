@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-extrabold tracking-tight text-white uppercase">NEXUS POS</span>
-                <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                <span className="text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
                   LIVE
                 </span>
               </div>
@@ -98,6 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => setMobileDrawerOpen(false)}
             className="md:hidden p-1.5 text-zinc-400 hover:text-white rounded-lg"
+            aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
@@ -126,14 +127,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                   <div className="truncate">
                     <div className="text-xs leading-tight">{item.label}</div>
-                    <div className="text-[10px] text-zinc-400 font-normal leading-tight mt-0.5 truncate">
+                    <div className="text-xs text-zinc-400 font-normal leading-tight mt-0.5 truncate">
                       {item.description}
                     </div>
                   </div>
                 </div>
 
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-zinc-950 text-[10px] flex items-center justify-center font-extrabold shadow-sm">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-zinc-950 text-[11px] tabular-nums flex items-center justify-center font-extrabold shadow-sm">
                     {item.badge}
                   </span>
                 )}
@@ -148,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
           <div className="min-w-0">
             <div className="text-xs font-bold text-white truncate">{user.display_name}</div>
-            <div className="text-[10px] text-zinc-400 font-mono truncate">
+            <div className="text-xs text-zinc-400 truncate">
               {user.username} • {ROLE_LABELS[user.role]}
             </div>
           </div>
@@ -157,6 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={onLogout}
             className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-700/60"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sign out
@@ -174,7 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>{isStandalone ? 'Installed (App Mode)' : 'Install on Phone'}</span>
             </div>
             {!isStandalone && (
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800/50 flex items-center gap-1">
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-800/50 flex items-center gap-1">
                 <Download className="w-2.5 h-2.5" />
                 App
               </span>
@@ -182,7 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
 
-        <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono px-1">
+        <div className="flex items-center justify-between text-xs text-zinc-400 tabular-nums px-1">
           <span>v3.0.0 • PWA Ready</span>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3 text-zinc-400" />
@@ -212,12 +214,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => setMobileDrawerOpen(true)}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
+            aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
           </button>
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-white">NEXUS POS</span>
-            <span className="block text-[10px] text-zinc-400 leading-tight">{user.display_name}</span>
+            <span className="block text-xs text-zinc-400 leading-tight">{user.display_name}</span>
           </div>
         </div>
 
@@ -225,14 +228,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isStandalone && onOpenInstallModal && (
             <button
               onClick={onOpenInstallModal}
-              className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 text-[10px] font-bold rounded-lg border border-emerald-500/30 shadow-xs active:scale-95 transition-transform"
+              className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 text-xs font-bold rounded-lg border border-emerald-500/30 shadow-xs active:scale-95 transition-transform"
             >
               <Smartphone className="w-3 h-3" />
               <span>Install App</span>
             </button>
           )}
           {cartCount > 0 && (
-            <span className="px-2 py-0.5 bg-emerald-500 text-zinc-950 text-[10px] font-bold rounded-full">{cartCount}</span>
+            <span className="px-2 py-0.5 bg-emerald-500 text-zinc-950 text-xs tabular-nums font-bold rounded-full">{cartCount}</span>
           )}
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         </div>
@@ -265,12 +268,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="relative">
                   <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-emerald-500 text-zinc-950 text-[10px] flex items-center justify-center font-bold">
+                    <span className="absolute -top-1.5 -right-2 w-5 h-5 rounded-full bg-emerald-500 text-zinc-950 text-[11px] tabular-nums flex items-center justify-center font-bold">
                       {item.badge}
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] mt-0.5 tracking-tight">{item.label.split(' ')[0]}</span>
+                <span className="text-xs mt-0.5 tracking-tight">{item.label.split(' ')[0]}</span>
               </button>
             );
           })}

@@ -10,11 +10,26 @@ const DEFAULTS: Settings = {
   tax_rate_bps: 500,
   return_window_days: 30,
   refund_approval_threshold_cents: 5000,
+  timezone: 'America/Toronto',
 };
 
 function int(value: string | undefined, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Validated here rather than at the call site: an unknown IANA zone makes Intl
+ * throw, and that must never be the reason a checkout fails.
+ */
+function zone(value: string | undefined): string {
+  if (!value) return DEFAULTS.timezone;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: value });
+    return value;
+  } catch {
+    return DEFAULTS.timezone;
+  }
 }
 
 /** Raw settings as stored (tax in basis points, money in cents). Used by services. */
@@ -30,6 +45,7 @@ export async function getSettings(db: Queryable = currentDb()): Promise<Settings
       map.get('refund_approval_threshold_cents'),
       DEFAULTS.refund_approval_threshold_cents,
     ),
+    timezone: zone(map.get('timezone')),
   };
 }
 

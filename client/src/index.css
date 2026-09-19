@@ -73,3 +73,49 @@ button, a, [role="button"] {
   border-color: rgba(0, 0, 0, 0.45) !important;
 }
 
+
+/* ---------------------------------------------------------------------------
+ * Utilities the markup already uses but Tailwind 3.4 never provided.
+ * `animate-in` / `fade-in` / `slide-in-from-top-2` come from
+ * tailwindcss-animate, which is not a dependency; they are reproduced here
+ * with the same custom-property contract so the existing classes compose.
+ * ------------------------------------------------------------------------- */
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(
+        var(--tw-enter-translate-x, 0),
+        var(--tw-enter-translate-y, 0),
+        0
+      )
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), 1);
+  }
+}
+
+.animate-in {
+  animation-name: enter;
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+.fade-in {
+  --tw-enter-opacity: 0;
+}
+.slide-in-from-top-2 {
+  --tw-enter-translate-y: -0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in {
+    animation: none;
+  }
+}
