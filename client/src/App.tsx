@@ -212,7 +212,9 @@ export function App() {
         isStandalone={isStandalone}
       />
 
-      <div className="flex-1 md:pl-64 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden pb-16 md:pb-6">
+      {/* Offsets match the chrome exactly: 72px icon rail from md, 256px sidebar from xl,
+          nothing on a phone beyond clearing the 81px bottom bar and its safe area. */}
+      <div className="flex-1 md:pl-[72px] xl:pl-64 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden pb-[calc(81px_+_env(safe-area-inset-bottom,0px))] md:pb-6">
         <main className="flex-1 w-full max-w-full min-w-0">
           {activeTab === 'pos' && (
             <POSPage products={products} departments={departments} refreshData={loadInitialData} cart={cart} setCart={setCart} />
