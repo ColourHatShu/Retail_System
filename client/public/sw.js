@@ -1,4 +1,7 @@
-const CACHE_NAME = 'nexus-pos-v4';
+// Bumped for the design-canvas rebuild: every screen's markup changed, so the
+// byte change here is what makes installed PWAs re-register the worker and
+// drop the previous version's cached assets instead of keeping them forever.
+const CACHE_NAME = 'nexus-pos-v5';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
