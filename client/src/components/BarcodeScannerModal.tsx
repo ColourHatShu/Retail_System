@@ -378,13 +378,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       setErrorMessage(null);
       setErrorType(null);
 
-      // Re-fetch cameras after permission is granted to get accurate labels
-      try {
-        const refreshed = await Html5Qrcode.getCameras();
-        if (refreshed.length > 0) {
-          setCameras(refreshed);
-        }
-      } catch {}
+      // Never call Html5Qrcode.getCameras() once the camera is live: it opens a camera of
+      // its own (getUserMedia, the front one on iPhone) and then stops it. iOS runs one
+      // camera at a time, so that interrupts the stream just started — the green camera
+      // dot stays on, the dialog says "Ready to scan", and the viewfinder is black.
+      // enumerateDevices only reads the list, and has labels now permission is granted.
+      if (availableDevices.length === 0) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices
+            .filter((d) => d.kind === 'videoinput')
+            .map((d) => ({ id: d.deviceId, label: d.label }));
+          if (videoInputs.length > 0) {
+            setCameras(videoInputs);
+          }
+        } catch {}
+      }
 
       // Check torch capability
       try {
@@ -710,8 +719,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           )}
 
           {/* Camera controls. Close + title are phone-only; torch and camera picker are not.
-              Above the error card (z-20): on phone this close button is the only one there is. */}
-          <div className="absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-2">
+              Above the error card (z-20): on phone this close button is the only one there is.
+              Installed to the iPhone home screen the page runs under the status bar
+              (black-translucent + viewport-fit=cover), so clear the clock and the island. */}
+          <div className="absolute inset-x-2 top-[max(0.5rem,env(safe-area-inset-top,0px))] z-20 flex items-start justify-between gap-2 md:top-2">
             <div className="flex min-w-0 items-center gap-2 md:hidden">
               <button
                 type="button"
@@ -806,7 +817,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
           {/* Permission & error troubleshooting, over the dead viewfinder */}
           {errorMessage && (
-            <div className="absolute inset-0 z-10 overflow-y-auto bg-zinc-950/95 px-4 pb-5 pt-16 md:pt-5">
+            <div className="absolute inset-0 z-10 overflow-y-auto bg-zinc-950/95 px-4 pb-5 pt-[calc(4rem+env(safe-area-inset-top,0px))] md:pt-5">
               <div className="mx-auto flex max-w-sm flex-col items-center gap-3 text-center">
                 <div className="grid h-12 w-12 place-items-center rounded-2xl border border-amber-500/20 bg-amber-500/10">
                   {errorType === 'PERMISSION' ? (
