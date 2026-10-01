@@ -30,6 +30,7 @@ import { playScanSuccessSound, playPaymentSuccessSound, playScanErrorSound } fro
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { ReceiptModal } from '../components/ReceiptModal';
 import { ProductModal } from '../components/ProductModal';
+import { UnregisteredProductDialog } from '../components/UnregisteredProductDialog';
 import { useHardwareBarcodeScanner } from '../utils/barcodeListener';
 
 interface POSPageProps {
@@ -38,6 +39,8 @@ interface POSPageProps {
   refreshData: () => Promise<void>;
   cart: CartItem[];
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
+  /** Owners and managers. The server refuses a cashier's new product, so don't offer one. */
+  canRegisterProducts: boolean;
 }
 
 /** What the last scan did, so the cashier can see it and undo exactly that much. */
@@ -165,6 +168,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   refreshData,
   cart,
   setCart,
+  canRegisterProducts,
 }) => {
   const [selectedDeptId, setSelectedDeptId] = useState<number | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -192,6 +196,11 @@ export const POSPage: React.FC<POSPageProps> = ({
   // emptied the form, so the notice used to stay up behind it.
   const [unregisteredBarcode, setUnregisteredBarcode] = useState<string | null>(null);
   const [productModalOpen, setProductModalOpen] = useState(false);
+  // The barcode the "not registered" popup is asking about, while it is up.
+  const [unknownPrompt, setUnknownPrompt] = useState<string | null>(null);
+  // The code last answered "Not now" while the camera was open, so the camera still
+  // resting on that item doesn't ask again every few seconds.
+  const declinedCameraPromptRef = useRef<string | null>(null);
   // True while any field on this screen has focus; see `fieldFocus` below.
   const [scanFocused, setScanFocused] = useState(false);
 
@@ -509,10 +518,15 @@ export const POSPage: React.FC<POSPageProps> = ({
 
   // ---- scanning ------------------------------------------------------------
 
-  const flagUnknownBarcode = (code: string) => {
+  const flagUnknownBarcode = (code: string, fromCamera = false) => {
     playScanErrorSound();
     setUnregisteredBarcode(code);
     showAlert({ tone: 'unknown', text: `No product has barcode ${code}`, barcode: code });
+    // Ask straight away. A deliberate scan always asks; only the camera re-reading the
+    // item that was just answered "Not now" stays quiet. The banner still offers it.
+    if (!(fromCamera && declinedCameraPromptRef.current === code)) {
+      setUnknownPrompt(code);
+    }
   };
 
   /**
@@ -520,15 +534,22 @@ export const POSPage: React.FC<POSPageProps> = ({
    * one wedge trigger is one Enter, so a second pass of the same bottle is a real
    * second bottle — it must ring up, not be swallowed.
    */
-  const handleBarcodeScanned = (barcode: string) => {
+  const handleBarcodeScanned = (barcode: string, fromCamera = false) => {
     const clean = barcode.trim();
     if (!clean) return { accepted: false };
 
     const found = products.find((p) => p.barcode === clean);
     if (!found) {
-      flagUnknownBarcode(clean);
-      return { accepted: false, message: `No product has barcode ${clean}. Register it or keep scanning.` };
+      flagUnknownBarcode(clean, fromCamera);
+      return {
+        accepted: false,
+        message: canRegisterProducts
+          ? `No product has barcode ${clean}. Register it or keep scanning.`
+          : `No product has barcode ${clean}. Ask a manager to add it.`,
+      };
     }
+    // A wedge scan of a known item means the cashier has moved on from the question.
+    setUnknownPrompt(null);
 
     const added = registerScan(found, qtyPerScan);
     if (added <= 0) {
@@ -545,7 +566,9 @@ export const POSPage: React.FC<POSPageProps> = ({
 
   // Active hardware wedge listener. Off while the scan field has focus: there the
   // field itself receives the scan and Enter submits it, so the code is complete.
-  useHardwareBarcodeScanner(handleBarcodeScanned, !scanFocused);
+  // Off while the product form is open too: the form reads scans into its own barcode
+  // field, and this listener would otherwise ring the same scan up behind it.
+  useHardwareBarcodeScanner(handleBarcodeScanned, !scanFocused && !productModalOpen);
 
   /** Enter in the scan field: a barcode, an SKU, or a name that matches one item. */
   const submitScan = () => {
@@ -646,6 +669,9 @@ export const POSPage: React.FC<POSPageProps> = ({
 
   // ---- catalogue writes ----------------------------------------------------
 
+  // A refusal (no permission, a barcode an archived product still owns) is left to throw:
+  // the form shows it and stays open with what was typed. Caught here, the form closed
+  // and the message was cleared in the same tick, so a failed save looked like nothing.
   const handleSaveNewProduct = async (productData: Partial<Product>) => {
     try {
       setIsProcessing(true);
@@ -654,6 +680,7 @@ export const POSPage: React.FC<POSPageProps> = ({
       setProductModalOpen(false);
       dismissAlert();
       setUnregisteredBarcode(null);
+      declinedCameraPromptRef.current = null;
       // Automatically add the newly registered product. addToCart owns the scan
       // sound, so don't claim the line landed when it refused it.
       const added = registerScan(created, qtyPerScan);
@@ -661,8 +688,6 @@ export const POSPage: React.FC<POSPageProps> = ({
         text: added > 0 ? `"${created.name}" registered and added` : `"${created.name}" registered`,
       });
       focusScanField();
-    } catch (err: any) {
-      showAlert({ tone: 'error', text: err.message || 'Failed to register product' });
     } finally {
       setIsProcessing(false);
     }
@@ -836,7 +861,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   // A dialog owns the keyboard while it is up: no charging behind the camera,
   // the product form or the receipt.
   const modalOpenRef = useRef(false);
-  modalOpenRef.current = scannerOpen || productModalOpen || receiptOpen;
+  modalOpenRef.current = scannerOpen || productModalOpen || receiptOpen || unknownPrompt !== null;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -949,17 +974,19 @@ export const POSPage: React.FC<POSPageProps> = ({
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={() => {
-            setUnregisteredBarcode('');
-            setProductModalOpen(true);
-          }}
-          className="inline-flex items-center gap-1.5 h-10 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-[13px] font-semibold rounded-xl shadow-xs transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add new product</span>
-        </button>
+        {canRegisterProducts && (
+          <button
+            type="button"
+            onClick={() => {
+              setUnregisteredBarcode('');
+              setProductModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 h-10 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-[13px] font-semibold rounded-xl shadow-xs transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add new product</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={handleSeedBeverages}
@@ -1383,21 +1410,25 @@ export const POSPage: React.FC<POSPageProps> = ({
                   </p>
                   {scanAlert.tone === 'unknown' && (
                     <p className="text-[13px] leading-5 text-amber-800">
-                      Scanning continues. Register it now or keep going.
+                      {canRegisterProducts
+                        ? 'Scanning continues. Register it now or keep going.'
+                        : 'Scanning continues. Ask a manager to add it in Inventory.'}
                     </p>
                   )}
                 </div>
 
                 {scanAlert.tone === 'unknown' && (
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={openProductRegistration}
-                      className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-[13px] font-semibold transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Register product</span>
-                    </button>
+                    {canRegisterProducts && (
+                      <button
+                        type="button"
+                        onClick={openProductRegistration}
+                        className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-[13px] font-semibold transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Register product</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -1865,9 +1896,11 @@ export const POSPage: React.FC<POSPageProps> = ({
         isOpen={scannerOpen}
         onClose={() => {
           setScannerOpen(false);
+          declinedCameraPromptRef.current = null;
           focusScanField();
         }}
-        onScan={handleBarcodeScanned}
+        onScan={(code) => handleBarcodeScanned(code, true)}
+        paused={unknownPrompt !== null}
         title="Scan Item to Add to Order"
         subtitle={`Adds ${qtyPerScan} per scan · point the camera at the barcode`}
         continuous={true}
@@ -1876,6 +1909,22 @@ export const POSPage: React.FC<POSPageProps> = ({
           lastScan && !isCharging ? (delta) => updateQuantity(lastScan.productId, delta) : undefined
         }
         orderSummary={{ itemCount, total }}
+      />
+
+      {/* A scan found nothing: ask now, above the camera if it is open */}
+      <UnregisteredProductDialog
+        barcode={unknownPrompt}
+        canRegister={canRegisterProducts}
+        onRegister={() => {
+          setUnregisteredBarcode(unknownPrompt);
+          setUnknownPrompt(null);
+          openProductRegistration();
+        }}
+        onClose={() => {
+          if (scannerOpen) declinedCameraPromptRef.current = unknownPrompt;
+          setUnknownPrompt(null);
+          if (!scannerOpen) focusScanField();
+        }}
       />
 
       {/* Quick add / register product */}

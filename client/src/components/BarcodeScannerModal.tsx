@@ -82,6 +82,12 @@ interface BarcodeScannerModalProps {
   onAdjustLastLine?: (delta: 1 | -1) => void;
   /** The running order as the caller has already totalled it. */
   orderSummary?: { itemCount: number; total: number } | null;
+  /**
+   * While true the camera keeps running but its reads are ignored. Set it while the
+   * caller asks something about the last scan, so the lens doesn't go on reading — and
+   * beeping — behind the question.
+   */
+  paused?: boolean;
 }
 
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
@@ -94,6 +100,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   lastLine = null,
   onAdjustLastLine,
   orderSummary = null,
+  paused = false,
 }) => {
   const [manualCode, setManualCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -125,6 +132,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onScanRef.current = onScan;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // The decode callback is bound once when the camera starts, so it reads these refs.
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  // Stopping the camera is async, and it keeps decoding until it has stopped. A read
+  // landing after the caller closed the dialog must not reach the caller.
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   const scannerElementId = 'barcode-reader-view';
 
@@ -199,6 +213,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const onScanSuccess = async (decodedText: string) => {
     const cleanCode = decodedText ? decodedText.trim() : '';
     if (!cleanCode) return;
+
+    // Closed, or the caller is asking something about the last scan: don't read past it.
+    if (!isOpenRef.current || pausedRef.current) {
+      return;
+    }
 
     const now = Date.now();
 

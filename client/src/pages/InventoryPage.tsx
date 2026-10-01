@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
@@ -25,6 +25,7 @@ import { DepartmentModal } from '../components/DepartmentModal';
 import { BarcodeLabelModal } from '../components/BarcodeLabelModal';
 import { ExcelImportModal } from '../components/ExcelImportModal';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
+import { UnregisteredProductDialog } from '../components/UnregisteredProductDialog';
 import { playScanSuccessSound } from '../utils/audio';
 
 interface InventoryPageProps {
@@ -131,6 +132,12 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  // A camera scan matched nothing: the barcode the popup is asking about, and the one
+  // a new product form opens with when the answer is "Register product".
+  const [unknownPrompt, setUnknownPrompt] = useState<string | null>(null);
+  const [newProductBarcode, setNewProductBarcode] = useState('');
+  // Answered "Not now": the camera still resting on that item shouldn't ask again.
+  const declinedPromptRef = useRef<string | null>(null);
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [actionsProduct, setActionsProduct] = useState<Product | null>(null);
@@ -229,6 +236,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
 
   const openNewProduct = () => {
     setEditingProduct(null);
+    setNewProductBarcode('');
     setProductModalOpen(true);
   };
 
@@ -1262,11 +1270,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
         onClose={() => {
           setProductModalOpen(false);
           setEditingProduct(null);
+          setNewProductBarcode('');
         }}
         onSave={handleSaveProduct}
         product={editingProduct}
         departments={departments}
         defaultDepartmentId={selectedDeptId === 'ALL' ? undefined : selectedDeptId}
+        initialBarcode={editingProduct ? undefined : newProductBarcode || undefined}
         onDepartmentCreated={async () => {
           await refreshData();
         }}
@@ -1295,9 +1305,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
 
       <BarcodeScannerModal
         isOpen={scannerOpen}
-        onClose={() => setScannerOpen(false)}
+        onClose={() => {
+          setScannerOpen(false);
+          declinedPromptRef.current = null;
+        }}
         title="Find a product"
         subtitle="Point the camera at the barcode to filter this list"
+        paused={unknownPrompt !== null}
         onScan={(barcode) => {
           const code = barcode.trim();
           const match = products.find((p) => p.barcode === code);
@@ -1306,10 +1320,39 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
           setStockFilter('ALL');
           setSearchQuery(code);
           if (!match) {
+            // An archived product still owns its barcode, and registering it again is
+            // refused, so point at the product instead of offering a form that fails.
+            const archivedMatch = archived.find((p) => p.barcode === code);
+            if (archivedMatch) {
+              return {
+                accepted: false,
+                message: `${code} belongs to "${archivedMatch.name}", which is archived. Restore it from "Show archived".`,
+              };
+            }
+            if (declinedPromptRef.current !== code) setUnknownPrompt(code);
             return { accepted: false, message: `No active product carries the barcode ${code}.` };
           }
           setScannerOpen(false);
           return true;
+        }}
+      />
+
+      {/* A scan found nothing: offer the same Add product form, barcode filled in */}
+      <UnregisteredProductDialog
+        barcode={unknownPrompt}
+        canRegister
+        onRegister={() => {
+          const code = unknownPrompt || '';
+          setUnknownPrompt(null);
+          setScannerOpen(false);
+          declinedPromptRef.current = null;
+          setEditingProduct(null);
+          setNewProductBarcode(code);
+          setProductModalOpen(true);
+        }}
+        onClose={() => {
+          declinedPromptRef.current = unknownPrompt;
+          setUnknownPrompt(null);
         }}
       />
     </div>

@@ -217,7 +217,14 @@ export function App() {
       <div className="flex-1 md:pl-[72px] xl:pl-64 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden pb-[calc(81px_+_env(safe-area-inset-bottom,0px))] md:pb-6">
         <main className="flex-1 w-full max-w-full min-w-0">
           {activeTab === 'pos' && (
-            <POSPage products={products} departments={departments} refreshData={loadInitialData} cart={cart} setCart={setCart} />
+            <POSPage
+              products={products}
+              departments={departments}
+              refreshData={loadInitialData}
+              cart={cart}
+              setCart={setCart}
+              canRegisterProducts={user?.role === 'OWNER' || user?.role === 'MANAGER'}
+            />
           )}
           {activeTab === 'returns' && <ReturnsPage currentUser={user} refreshData={loadInitialData} />}
           {activeTab === 'inventory' && (
