@@ -119,6 +119,7 @@ export interface StoreSettings {
   pst_number: string | null;
   store_address: string | null;
   store_phone: string | null;
+  loyalty_points_per_dollar: number;
   return_window_days: number;
   refund_approval_threshold: number;
 }
@@ -126,6 +127,161 @@ export interface StoreSettings {
 export type StoreSettingsUpdate = Partial<
   Omit<StoreSettings, 'hst' | 'tax_labels' | 'province'> & { province: string | null }
 >;
+
+export type Tender = 'CASH' | 'DEBIT' | 'CREDIT' | 'CARD';
+
+export interface CheckoutLine {
+  product_id: number;
+  barcode?: string;
+  quantity: number;
+  unit_price?: number;
+  price_override?: number;
+  line_discount?: number;
+}
+
+export interface CheckoutRequest {
+  items: CheckoutLine[];
+  subtotal?: number;
+  tax_rate?: number;
+  tax_amount?: number;
+  discount?: number;
+  total?: number;
+  expected_total?: number;
+  payment_method?: Tender;
+  amount_paid?: number;
+  payments?: Array<{ method: Tender; amount: number }>;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_id?: number;
+  client_ref?: string;
+  sold_at?: string;
+}
+
+export interface ShiftReport {
+  id: number;
+  status: 'OPEN' | 'CLOSED';
+  opened_at: string;
+  opened_by_name: string | null;
+  closed_at: string | null;
+  closed_by_name: string | null;
+  note: string | null;
+  opening_float: number;
+  sales_count: number;
+  sales_total: number;
+  tax_total: number;
+  discount_total: number;
+  tenders: Record<string, number>;
+  refunds_count: number;
+  refunds_total: number;
+  refunds_by_method: Record<string, number>;
+  pay_ins: number;
+  pay_outs: number;
+  movements: Array<{ id: number; type: 'PAY_IN' | 'PAY_OUT'; amount: number; reason: string; user_name: string | null; created_at: string }>;
+  expected_cash: number;
+  counted_cash: number | null;
+  over_short: number | null;
+}
+
+export interface ShiftSummary {
+  id: number;
+  status: string;
+  opened_at: string;
+  opened_by_name: string | null;
+  closed_at: string | null;
+  closed_by_name: string | null;
+  expected_cash: number | null;
+  counted_cash: number | null;
+  over_short: number | null;
+}
+
+export interface HeldSale {
+  id: number;
+  label: string | null;
+  payload: {
+    items: Array<{ product_id: number; quantity: number; price_override?: number; line_discount?: number }>;
+    discount: number;
+    customer_name?: string;
+    customer_id?: number;
+  };
+  item_count: number;
+  total: number;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  points: number;
+  visits: number;
+  total_spent: number;
+  last_visit: string | null;
+  created_at: string;
+  recent_sales?: Array<{ id: number; receipt_number: string; total: number; status: string; created_at: string }>;
+}
+
+export interface ReportRow {
+  name: string;
+  units: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+}
+
+export interface SalesReport {
+  totals: ReportRow & { margin_percent: number };
+  top_products: ReportRow[];
+  departments: ReportRow[];
+  cashiers: ReportRow[];
+  hours: Array<ReportRow & { hour: number }>;
+  slow_movers: Array<{ name: string; stock_quantity: number; stock_value: number }>;
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  po_number: string;
+  supplier_id: number;
+  supplier_name: string;
+  status: 'ORDERED' | 'RECEIVED' | 'CANCELLED';
+  notes: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  received_at: string | null;
+  item_count: number;
+  total_cost: number;
+  items?: Array<{
+    id: number;
+    product_id: number;
+    product_name: string;
+    barcode: string;
+    quantity: number;
+    received_quantity: number;
+    unit_cost: number;
+  }>;
+}
+
+export interface ReorderSuggestion {
+  id: number;
+  name: string;
+  barcode: string;
+  stock_quantity: number;
+  min_stock_level: number;
+  cost_price: number;
+  last_supplier_id: number | null;
+  suggested_quantity: number;
+}
 
 export interface ReturnRequest {
   sale_id?: number;
@@ -245,20 +401,49 @@ export const api = {
 
   // POS checkout. The server recomputes every amount from the catalogue; the
   // price fields below are informational and `expected_total` is the guard.
-  checkout: (order: {
-    items: Array<{ product_id: number; barcode?: string; quantity: number; unit_price: number }>;
-    subtotal: number;
-    tax_rate?: number;
-    tax_amount?: number;
-    discount?: number;
-    total: number;
-    expected_total?: number;
-    payment_method: 'CASH' | 'CARD';
-    amount_paid: number;
-    customer_name?: string;
-    customer_phone?: string;
-  }) => post<Sale>('/sales/checkout', order),
+  checkout: (order: CheckoutRequest) => post<Sale>('/sales/checkout', order),
   getSales: (limit = 50, offset = 0) => fetchJson<Sale[]>(withQuery('/sales', { limit, offset })),
+
+  // Cash drawer
+  currentShift: () => fetchJson<ShiftReport | null>(`${API_BASE}/shifts/current`),
+  listShifts: () => fetchJson<ShiftSummary[]>(`${API_BASE}/shifts`),
+  getShift: (id: number) => fetchJson<ShiftReport>(`${API_BASE}/shifts/${id}`),
+  openShift: (opening_float: number) => post<ShiftReport>('/shifts/open', { opening_float }),
+  cashMovement: (data: { type: 'PAY_IN' | 'PAY_OUT'; amount: number; reason: string }) =>
+    post<ShiftReport>('/shifts/cash', data),
+  closeShift: (data: { counted_cash: number; note?: string }) => post<ShiftReport>('/shifts/close', data),
+
+  // Held sales
+  listHeld: () => fetchJson<HeldSale[]>(`${API_BASE}/held-sales`),
+  holdSale: (data: HeldSale['payload'] & { label?: string; total?: number }) => post<HeldSale>('/held-sales', data),
+  resumeHeld: (id: number) => post<HeldSale>(`/held-sales/${id}/resume`, {}),
+
+  // Customers
+  searchCustomers: (q = '', limit = 20) => fetchJson<Customer[]>(withQuery('/customers', { q: q || undefined, limit })),
+  getCustomer: (id: number) => fetchJson<Customer>(`${API_BASE}/customers/${id}`),
+  createCustomer: (data: { name: string; phone?: string | null; email?: string | null; notes?: string | null }) =>
+    post<Customer>('/customers', data),
+  updateCustomer: (id: number, data: Partial<Pick<Customer, 'name' | 'phone' | 'email' | 'notes' | 'points'>>) =>
+    put<Customer>(`/customers/${id}`, data),
+
+  // Reports
+  salesReport: (from: string, to: string) => fetchJson<SalesReport>(withQuery('/reports/sales', { from, to })),
+
+  // Purchasing
+  listSuppliers: () => fetchJson<Supplier[]>(`${API_BASE}/purchasing/suppliers`),
+  createSupplier: (data: Partial<Supplier> & { name: string }) => post<Supplier>('/purchasing/suppliers', data),
+  updateSupplier: (id: number, data: Partial<Supplier>) => put<Supplier>(`/purchasing/suppliers/${id}`, data),
+  reorderSuggestions: () => fetchJson<ReorderSuggestion[]>(`${API_BASE}/purchasing/suggestions`),
+  listPurchaseOrders: () => fetchJson<PurchaseOrder[]>(`${API_BASE}/purchasing/orders`),
+  getPurchaseOrder: (id: number) => fetchJson<PurchaseOrder>(`${API_BASE}/purchasing/orders/${id}`),
+  createPurchaseOrder: (data: {
+    supplier_id: number;
+    notes?: string;
+    items: Array<{ product_id: number; quantity: number; unit_cost: number }>;
+  }) => post<PurchaseOrder>('/purchasing/orders', data),
+  receivePurchaseOrder: (id: number, items?: Array<{ item_id: number; quantity: number }>) =>
+    post<PurchaseOrder>(`/purchasing/orders/${id}/receive`, { items }),
+  cancelPurchaseOrder: (id: number) => post<PurchaseOrder>(`/purchasing/orders/${id}/cancel`, {}),
   getSale: (id: number) => fetchJson<Sale>(`${API_BASE}/sales/${id}`),
   getSaleByReceipt: (receiptNumber: string) =>
     fetchJson<Sale>(`${API_BASE}/sales/receipt/${encodeURIComponent(receiptNumber.trim())}`),

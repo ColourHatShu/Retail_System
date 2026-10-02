@@ -14,6 +14,10 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { UsersPage } from './pages/UsersPage';
 import { ReturnsPage } from './pages/ReturnsPage';
 import { StoreProfilePage } from './pages/StoreProfilePage';
+import { CashDrawerPage } from './pages/CashDrawerPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { PurchasingPage } from './pages/PurchasingPage';
+import { OfflineSyncBanner } from './components/OfflineSyncBanner';
 
 type AuthState = 'checking' | 'setup' | 'login' | 'ready';
 
@@ -203,6 +207,7 @@ export function App() {
       style={{ paddingTop: 'var(--admin-banner, 0px)' }}
     >
       {user?.acting_admin_id && <ImpersonationBanner user={user} />}
+      {user && <OfflineSyncBanner onSynced={loadInitialData} />}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -225,6 +230,7 @@ export function App() {
               cart={cart}
               setCart={setCart}
               canRegisterProducts={user?.role === 'OWNER' || user?.role === 'MANAGER'}
+              canOverridePrice={user?.role === 'OWNER' || user?.role === 'MANAGER'}
             />
           )}
           {activeTab === 'returns' && <ReturnsPage currentUser={user} refreshData={loadInitialData} />}
@@ -236,6 +242,9 @@ export function App() {
           {activeTab === 'analytics' && <AnalyticsPage departments={departments} />}
           {activeTab === 'users' && <UsersPage currentUser={user} />}
           {activeTab === 'profile' && <StoreProfilePage currentUser={user} />}
+          {activeTab === 'drawer' && <CashDrawerPage currentUser={user} />}
+          {activeTab === 'customers' && <CustomersPage currentUser={user} />}
+          {activeTab === 'purchasing' && <PurchasingPage products={products} refreshData={loadInitialData} />}
         </main>
       </div>
 

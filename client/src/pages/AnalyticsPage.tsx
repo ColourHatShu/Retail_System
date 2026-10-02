@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Department, ReturnRecord, Sale } from '../types';
 import { api } from '../utils/api';
+import { ProfitReport } from '../components/ProfitReport';
 import { ReceiptModal } from '../components/ReceiptModal';
 
 interface AnalyticsPageProps {
@@ -37,6 +38,8 @@ const STATUS_PILL: Record<string, { label: string; className: string }> = {
 const TENDER_LABEL: Record<string, string> = {
   CASH: 'Cash',
   CARD: 'Card',
+  DEBIT: 'Debit',
+  CREDIT: 'Credit',
   UPI_QR: 'UPI / QR',
   SPLIT: 'Split',
 };
@@ -549,10 +552,24 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = () => {
   const tenderTotals = useMemo(
     () =>
       activeSales.reduce((acc, s) => {
-        const cell = acc[s.payment_method] || { amount: 0, count: 0 };
-        cell.amount += Number(s.total) - Number(s.refunded_total || 0);
-        cell.count += 1;
-        acc[s.payment_method] = cell;
+        // Each tender's share of what was kept: cash net of change, then
+        // scaled down by whatever was refunded.
+        const total = Number(s.total);
+        const kept = total > 0 ? (total - Number(s.refunded_total || 0)) / total : 0;
+        const tenders = s.payments && s.payments.length > 0 ? s.payments : [{ method: s.payment_method, amount: total }];
+        let change = Number(s.change_due || 0);
+        for (const t of tenders) {
+          let amount = Number(t.amount);
+          if (t.method === 'CASH' && change > 0) {
+            const back = Math.min(change, amount);
+            amount -= back;
+            change -= back;
+          }
+          const cell = acc[t.method] || { amount: 0, count: 0 };
+          cell.amount += amount * kept;
+          cell.count += 1;
+          acc[t.method] = cell;
+        }
         return acc;
       }, {} as Record<string, { amount: number; count: number }>),
     [activeSales],
@@ -826,7 +843,11 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = () => {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'Cash taken', value: tenderTotals.CASH?.amount || 0 },
-              { label: 'Card taken', value: tenderTotals.CARD?.amount || 0 },
+              {
+                label: 'Card taken',
+                value:
+                  (tenderTotals.CARD?.amount || 0) + (tenderTotals.DEBIT?.amount || 0) + (tenderTotals.CREDIT?.amount || 0),
+              },
               { label: 'Tax charged', value: totalTax },
             ].map((cell) => (
               <div key={cell.label} className="flex flex-col gap-0.5">
@@ -904,6 +925,8 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = () => {
           </span>
         </CardShell>
       </div>
+
+      <ProfitReport fromMs={fromMs} toMs={toMs} />
 
       {/* Tax to remit for the selected range */}
       <CardShell className="flex flex-col gap-3 p-5">

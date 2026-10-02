@@ -142,6 +142,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClos
                       ${Number(itm.total_price).toFixed(2)}
                     </span>
                   </div>
+                  {(itm.line_discount ?? 0) > 0 && (
+                    <span className="text-[10px] text-emerald-700">Discount −${Number(itm.line_discount).toFixed(2)}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -192,10 +195,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClos
 
           {/* Payment method & change */}
           <div className="border-t border-dashed border-zinc-300 pt-2 space-y-1 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Payment Method:</span>
-              <span className="font-semibold uppercase">{sale.payment_method}</span>
-            </div>
+            {sale.payments && sale.payments.length > 1 ? (
+              sale.payments.map((p, i) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-zinc-500 capitalize">{p.method.toLowerCase()}:</span>
+                  <span>${Number(p.amount).toFixed(2)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Payment Method:</span>
+                <span className="font-semibold uppercase">{sale.payment_method}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-zinc-500">Amount Tendered:</span>
               <span>${Number(sale.amount_paid).toFixed(2)}</span>
@@ -205,6 +217,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClos
               <span>${Number(sale.change_due).toFixed(2)}</span>
             </div>
           </div>
+
+          {(sale.points_earned ?? 0) > 0 && (
+            <p className="text-center text-[11px] text-amber-700 font-sans">
+              {sale.customer_name} earned {sale.points_earned} loyalty points
+            </p>
+          )}
+          {sale.pending_sync && (
+            <p className="text-center text-[11px] font-semibold text-amber-700 font-sans">
+              Saved offline. The receipt number is assigned when it uploads.
+            </p>
+          )}
 
           {/* Barcode on receipt */}
           <div className="pt-2 flex flex-col items-center justify-center text-center">

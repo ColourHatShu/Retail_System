@@ -18,8 +18,15 @@ export type MovementType = (typeof MOVEMENT_TYPES)[number];
  * still hold other values — nothing validates stored strings, so old receipts
  * keep displaying whatever they were taken with.
  */
-export const PAYMENT_METHODS = ['CASH', 'CARD'] as const;
+export const PAYMENT_METHODS = ['CASH', 'DEBIT', 'CREDIT', 'CARD'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+/** What a sale row says it was paid with: one tender, or SPLIT when several. */
+export type SaleTender = PaymentMethod | 'SPLIT';
+
+export interface SalePayment {
+  method: PaymentMethod;
+  amount: number;
+}
 
 export const SALE_STATUSES = ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED', 'VOIDED'] as const;
 export type SaleStatus = (typeof SALE_STATUSES)[number];
@@ -229,8 +236,15 @@ export interface SaleRow {
   pst_number: string | null;
   discount_cents: number;
   total_cents: number;
-  payment_method: PaymentMethod;
+  payment_method: SaleTender;
   amount_paid_cents: number;
+  shift_id: number | null;
+  customer_id: number | null;
+  points_earned: number;
+  client_ref: string | null;
+  synced_at: string | null;
+  /** Tenders as json_agg rows; absent on receipts from before split payments. */
+  payments?: Array<{ method: PaymentMethod; amount_cents: number }> | null;
   change_due_cents: number;
   customer_name: string | null;
   customer_phone: string | null;
@@ -254,6 +268,9 @@ export interface SaleItemRow {
   total_price_cents: number;
   /** NULL on receipts written before tax classes existed. */
   tax_class: TaxClass | null;
+  list_price_cents: number | null;
+  line_discount_cents: number;
+  cost_cents: number | null;
   unit?: string;
   department_name?: string;
   returned_quantity?: number;
@@ -269,6 +286,9 @@ export interface SaleItem {
   unit_price: number;
   total_price: number;
   tax_class: TaxClass | null;
+  /** Catalogue price when sold; differs from unit_price after a price override. */
+  list_price: number;
+  line_discount: number;
   unit?: string;
   department_name?: string;
 }
@@ -346,7 +366,8 @@ export interface Sale {
   pst_number: string | null;
   discount: number;
   total: number;
-  payment_method: PaymentMethod;
+  payment_method: SaleTender;
+  payments: SalePayment[];
   amount_paid: number;
   change_due: number;
   customer_name: string | null;
@@ -355,6 +376,11 @@ export interface Sale {
   cashier_id: number | null;
   cashier_name: string | null;
   refunded_total: number;
+  shift_id: number | null;
+  customer_id: number | null;
+  points_earned: number;
+  /** Set when the register rang this sale up offline and uploaded it later. */
+  client_ref: string | null;
   created_at: string;
   /** Units on the sale (sum of line quantities), not the number of lines. */
   item_count?: number;
@@ -372,6 +398,8 @@ export interface Settings {
   pst_number: string | null;
   store_address: string | null;
   store_phone: string | null;
+  /** Loyalty points a named customer earns per dollar spent; 0 turns loyalty off. */
+  loyalty_points_per_dollar: number;
   return_window_days: number;
   refund_approval_threshold_cents: number;
   /** IANA zone the shop trades in; decides which calendar day a receipt belongs to. */

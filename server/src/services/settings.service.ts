@@ -17,6 +17,7 @@ const DEFAULTS: Settings = {
   pst_number: null,
   store_address: null,
   store_phone: null,
+  loyalty_points_per_dollar: 1,
   return_window_days: 30,
   refund_approval_threshold_cents: 5000,
   timezone: 'America/Toronto',
@@ -62,6 +63,7 @@ export async function getSettings(db: Queryable = currentDb()): Promise<Settings
     pst_number: text('pst_number'),
     store_address: text('store_address'),
     store_phone: text('store_phone'),
+    loyalty_points_per_dollar: int(map.get('loyalty_points_per_dollar'), DEFAULTS.loyalty_points_per_dollar),
     return_window_days: int(map.get('return_window_days'), DEFAULTS.return_window_days),
     refund_approval_threshold_cents: int(
       map.get('refund_approval_threshold_cents'),
@@ -89,6 +91,7 @@ export interface SettingsApi {
   pst_number: string | null;
   store_address: string | null;
   store_phone: string | null;
+  loyalty_points_per_dollar: number;
   return_window_days: number;
   refund_approval_threshold: number;
 }
@@ -109,6 +112,7 @@ export async function getSettingsApi(db: Queryable = currentDb()): Promise<Setti
     pst_number: s.pst_number,
     store_address: s.store_address,
     store_phone: s.store_phone,
+    loyalty_points_per_dollar: s.loyalty_points_per_dollar,
     return_window_days: s.return_window_days,
     refund_approval_threshold: fromCents(s.refund_approval_threshold_cents),
   };
@@ -149,6 +153,9 @@ export async function updateSettings(input: SettingsUpdate): Promise<SettingsApi
     }
     for (const key of ['gst_number', 'pst_number', 'store_address', 'store_phone'] as const) {
       if (input[key] !== undefined) await upsert(key, input[key] ?? '');
+    }
+    if (input.loyalty_points_per_dollar !== undefined) {
+      await upsert('loyalty_points_per_dollar', String(input.loyalty_points_per_dollar));
     }
     if (input.return_window_days !== undefined) {
       await upsert('return_window_days', String(input.return_window_days));

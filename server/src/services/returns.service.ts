@@ -162,7 +162,9 @@ function planLines(
   if (sale.gst_cents !== null) {
     const rates = { gst_bps: sale.gst_rate_bps ?? 0, pst_bps: sale.pst_rate_bps ?? 0, hst: !!sale.tax_hst };
     for (const l of lines) {
-      const part = refundParts(l.item.unit_price_cents, l.quantity, l.item.tax_class ?? 'STANDARD', sale, rates);
+      // What one unit of this line really cost after its own discount.
+      const netUnit = l.item.total_price_cents / l.item.quantity;
+      const part = refundParts(netUnit, l.quantity, l.item.tax_class ?? 'STANDARD', sale, rates);
       l.refund_cents = Math.round(part.base + part.gst + part.pst);
       gstExact += part.gst;
       pstExact += part.pst;
@@ -245,7 +247,8 @@ async function buildPlan(tx: Queryable, input: ReturnCreate, kind: 'RETURN' | 'V
     refund_cents,
     gst_cents,
     pst_cents,
-    refund_method: input.refund_method ?? sale.payment_method,
+    // A split sale has no single tender to default to; cash is the safe one.
+    refund_method: input.refund_method ?? (sale.payment_method === 'SPLIT' ? 'CASH' : sale.payment_method),
     completes_sale,
     requires_manager,
     window_closed,
@@ -322,8 +325,9 @@ async function persist(
   const number = await nextDocumentNumber(tx, 'RET');
   const created = (await row<{ id: number }>(
     tx,
-    `INSERT INTO returns (return_number, sale_id, kind, refund_cents, refund_method, reason, processed_by, gst_cents, pst_cents)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    `INSERT INTO returns (return_number, sale_id, kind, refund_cents, refund_method, reason, processed_by, gst_cents, pst_cents,
+                          shift_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, (SELECT id FROM shifts WHERE status = 'OPEN')) RETURNING id`,
     [
       number,
       plan.sale.id,
@@ -336,6 +340,17 @@ async function persist(
       plan.pst_cents,
     ],
   ))!;
+
+  // Loyalty points follow the money back: the refunded share of what the sale earned.
+  if (plan.sale.customer_id && plan.sale.points_earned > 0 && plan.sale.total_cents > 0) {
+    const lost = Math.floor((plan.sale.points_earned * plan.refund_cents) / plan.sale.total_cents);
+    if (lost > 0) {
+      await tx.query('UPDATE customers SET points = GREATEST(points - $1, 0), updated_at = now() WHERE id = $2', [
+        lost,
+        plan.sale.customer_id,
+      ]);
+    }
+  }
 
   for (const l of plan.lines) {
     await tx.query(

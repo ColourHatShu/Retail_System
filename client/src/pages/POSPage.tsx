@@ -28,6 +28,12 @@ import { Department, Product, CartItem, Sale } from '../types';
 import { api, ApiError } from '../utils/api';
 import type { StoreSettings } from '../utils/api';
 import { computeTax, percentToRateBps } from '../utils/tax';
+import type { CheckoutRequest, HeldSale, Tender } from '../utils/api';
+import { enqueue, isNetworkError, newClientRef } from '../utils/offlineQueue';
+import { SplitPaymentDialog } from '../components/SplitPaymentDialog';
+import { LineEditDialog } from '../components/LineEditDialog';
+import { HeldSalesControls } from '../components/HeldSalesControls';
+import { CustomerPicker } from '../components/CustomerPicker';
 import { playScanSuccessSound, playPaymentSuccessSound, playScanErrorSound } from '../utils/audio';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -43,6 +49,8 @@ interface POSPageProps {
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   /** Owners and managers. The server refuses a cashier's new product, so don't offer one. */
   canRegisterProducts: boolean;
+  /** Managers and owners may change a line's price. */
+  canOverridePrice?: boolean;
 }
 
 /** What the last scan did, so the cashier can see it and undo exactly that much. */
@@ -171,6 +179,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   cart,
   setCart,
   canRegisterProducts,
+  canOverridePrice = false,
 }) => {
   const [selectedDeptId, setSelectedDeptId] = useState<number | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -180,6 +189,10 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [browseOpen, setBrowseOpen] = useState(false);
   const [phoneTypeOpen, setPhoneTypeOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
+  const [customerId, setCustomerId] = useState<number | undefined>(undefined);
+  const [customerPoints, setCustomerPoints] = useState<number | undefined>(undefined);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [editLineId, setEditLineId] = useState<number | null>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
@@ -237,6 +250,37 @@ export const POSPage: React.FC<POSPageProps> = ({
     [],
   );
 
+  /** A cart line in cents: price (or a manager's override) times quantity, less its own discount. */
+  const lineCents = (item: CartItem) =>
+    Math.round((item.price_override ?? item.unit_price) * 100) * item.quantity -
+    Math.round((item.line_discount ?? 0) * 100);
+
+  const resumeHeld = (held: HeldSale) => {
+    const lines: CartItem[] = [];
+    const missing: number[] = [];
+    for (const l of held.payload.items) {
+      const product = products.find((p) => p.id === l.product_id);
+      if (!product) {
+        missing.push(l.product_id);
+        continue;
+      }
+      lines.push({
+        product,
+        quantity: l.quantity,
+        unit_price: product.price,
+        price_override: l.price_override,
+        line_discount: l.line_discount,
+      });
+    }
+    setCart(lines);
+    setDiscount(held.payload.discount ?? 0);
+    setDiscountInput(held.payload.discount ? String(held.payload.discount) : '');
+    setCustomerName(held.payload.customer_name ?? '');
+    setCustomerId(held.payload.customer_id);
+    setCustomerPoints(undefined);
+    if (missing.length > 0) setCheckoutError(`${missing.length} item(s) on that sale are no longer in the catalogue.`);
+  };
+
   // ---- money ---------------------------------------------------------------
   // Mirrors the server's integer-cent arithmetic exactly (lib/tax.ts): cents
   // per line, discount spread over the tax classes, GST/HST and PST rounded
@@ -244,10 +288,7 @@ export const POSPage: React.FC<POSPageProps> = ({
   const [discount, setDiscount] = useState(0);
 
   const totals = useMemo(() => {
-    const subtotalCents = cart.reduce(
-      (sum, item) => sum + Math.round(item.unit_price * 100) * item.quantity,
-      0,
-    );
+    const subtotalCents = cart.reduce((sum, item) => sum + lineCents(item), 0);
     const discountCents = Math.min(Math.max(Math.round((discount + 1e-9) * 100), 0), subtotalCents);
     const rates = {
       gst_bps: percentToRateBps(taxSettings?.gst_rate_percent ?? 5),
@@ -256,7 +297,7 @@ export const POSPage: React.FC<POSPageProps> = ({
     };
     const t = computeTax(
       cart.map((item) => ({
-        gross_cents: Math.round(item.unit_price * 100) * item.quantity,
+        gross_cents: lineCents(item),
         tax_class: item.product.tax_class ?? 'STANDARD',
       })),
       discountCents,
@@ -795,41 +836,47 @@ export const POSPage: React.FC<POSPageProps> = ({
    * refuses the order if `expected_total` no longer matches, so the panel is a
    * faster way to reach the same guarded call — not a shortcut past it.
    */
-  const handleCharge = async (method: 'CASH' | 'CARD') => {
+  const handleCharge = async (method: Tender, split?: Array<{ method: Tender; amount: number }>) => {
     if (cart.length === 0 || chargingRef.current) return;
     setCheckoutError(null);
+    setSplitOpen(false);
 
     const tendered = method === 'CASH' ? tenderedAmount : total;
-    if (method === 'CASH' && (!Number.isFinite(tendered) || tendered < total)) {
+    if (!split && method === 'CASH' && (!Number.isFinite(tendered) || tendered < total)) {
       setCheckoutError(`Cash received must be at least ${money(total)}.`);
       return;
     }
 
     chargingRef.current = true;
     setIsCharging(true);
-    try {
-      const saleResult = await api.checkout({
-        items: cart.map((item) => ({
-          product_id: item.product.id,
-          barcode: item.product.barcode,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-        })),
-        subtotal,
-        tax_rate: taxRate,
-        tax_amount: taxAmount,
-        discount: appliedDiscount,
-        total,
-        expected_total: total,
-        payment_method: method,
-        amount_paid: method === 'CASH' ? tendered : total,
-        customer_name: customerName.trim() || 'Walk-in Customer',
-      });
-
+    const order: CheckoutRequest = {
+      items: cart.map((item) => ({
+        product_id: item.product.id,
+        barcode: item.product.barcode,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        price_override: item.price_override,
+        line_discount: item.line_discount,
+      })),
+      subtotal,
+      tax_rate: taxRate,
+      tax_amount: taxAmount,
+      discount: appliedDiscount,
+      total,
+      expected_total: total,
+      ...(split ? { payments: split } : { payment_method: method, amount_paid: method === 'CASH' ? tendered : total }),
+      customer_name: customerName.trim() || 'Walk-in Customer',
+      customer_id: customerId,
+      // Same id on a retry or an offline upload: the server records it once.
+      client_ref: newClientRef(),
+    };
+    const finish = (saleResult: Sale) => {
       playPaymentSuccessSound();
       setCompletedSale(saleResult);
       setCart([]);
       setCustomerName('');
+      setCustomerId(undefined);
+      setCustomerPoints(undefined);
       setCustomerOpen(false);
       setCashTendered('');
       setDiscount(0);
@@ -839,11 +886,51 @@ export const POSPage: React.FC<POSPageProps> = ({
       setBrowseOpen(false);
       dismissAlert();
       setReceiptOpen(true);
-
-      // Refresh product stock and movements
-      await refreshData();
-      focusScanField();
+    };
+    let saleResult: Sale | null = null;
+    try {
+      saleResult = await api.checkout(order);
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        // No connection: keep the sale on this device and upload it later.
+        const queued = enqueue(order);
+        const paid = split ? split.reduce((a, p) => a + p.amount, 0) : method === 'CASH' ? tendered : total;
+        finish({
+          id: 0,
+          receipt_number: `OFFLINE-${queued.client_ref.slice(0, 8).toUpperCase()}`,
+          subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          gst_amount: gstAmount,
+          pst_amount: pstAmount,
+          gst_rate: taxSettings?.gst_rate_percent,
+          pst_rate: taxSettings?.pst_rate_percent,
+          tax_labels: taxSettings?.tax_labels,
+          gst_number: taxSettings?.gst_number ?? null,
+          discount: appliedDiscount,
+          total,
+          payment_method: split ? 'SPLIT' : method,
+          payments: split ?? [{ method, amount: paid }],
+          amount_paid: paid,
+          change_due: Math.max(Math.round((paid - total) * 100) / 100, 0),
+          customer_name: order.customer_name,
+          created_at: new Date().toISOString(),
+          pending_sync: true,
+          items: cart.map((item, i) => ({
+            id: i,
+            product_id: item.product.id,
+            name: item.product.name,
+            barcode: item.product.barcode,
+            quantity: item.quantity,
+            unit_price: item.price_override ?? item.unit_price,
+            total_price: lineCents(item) / 100,
+            line_discount: item.line_discount,
+            unit: item.product.unit,
+          })),
+        });
+        focusScanField();
+        return;
+      }
       playScanErrorSound();
       if (err instanceof ApiError && (err.code === 'PRICE_CHANGED' || err.code === 'INSUFFICIENT_STOCK')) {
         // Pull the current catalogue; the cart re-prices itself via the
@@ -862,6 +949,12 @@ export const POSPage: React.FC<POSPageProps> = ({
       chargingRef.current = false;
       setIsCharging(false);
     }
+    if (saleResult) {
+      finish(saleResult);
+      // Refresh product stock and movements
+      await refreshData();
+      focusScanField();
+    }
   };
 
   // ---- shortcuts -----------------------------------------------------------
@@ -877,7 +970,8 @@ export const POSPage: React.FC<POSPageProps> = ({
   // A dialog owns the keyboard while it is up: no charging behind the camera,
   // the product form or the receipt.
   const modalOpenRef = useRef(false);
-  modalOpenRef.current = scannerOpen || productModalOpen || receiptOpen || unknownPrompt !== null;
+  modalOpenRef.current =
+    scannerOpen || productModalOpen || receiptOpen || unknownPrompt !== null || splitOpen || editLineId !== null;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -889,7 +983,7 @@ export const POSPage: React.FC<POSPageProps> = ({
 
       if (e.key === 'F8' || e.key === 'F9') {
         e.preventDefault();
-        chargeRef.current(e.key === 'F8' ? 'CASH' : 'CARD');
+        chargeRef.current(e.key === 'F8' ? 'CASH' : 'DEBIT');
         return;
       }
       if (e.key === 'Escape') {
@@ -1187,7 +1281,8 @@ export const POSPage: React.FC<POSPageProps> = ({
           <span>Scan an item to start</span>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 xl:gap-3">
+        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-3 gap-2 xl:gap-3">
           <button
             type="button"
             onClick={() => handleCharge('CASH')}
@@ -1203,15 +1298,31 @@ export const POSPage: React.FC<POSPageProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => handleCharge('CARD')}
+            onClick={() => handleCharge('DEBIT')}
             className="h-12 md:h-14 xl:h-16 px-3.5 xl:pl-[18px] rounded-2xl bg-white hover:bg-zinc-100 text-zinc-950 flex items-center justify-center xl:justify-between gap-2.5 transition-colors active:scale-98"
           >
             <span className="flex items-center gap-2.5">
               <CreditCard className="w-5 h-5 xl:w-[22px] xl:h-[22px]" />
-              <span className="text-base xl:text-[17px] font-bold">Card</span>
+              <span className="text-base xl:text-[17px] font-bold">Debit</span>
             </span>
             <Kbd className="hidden xl:inline-flex border-zinc-200 bg-zinc-100 text-zinc-600">F9</Kbd>
           </button>
+          <button
+            type="button"
+            onClick={() => handleCharge('CREDIT')}
+            className="h-12 md:h-14 xl:h-16 px-3.5 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-950 flex items-center justify-center gap-2.5 transition-colors active:scale-98"
+          >
+            <CreditCard className="w-5 h-5 xl:w-[22px] xl:h-[22px]" />
+            <span className="text-base xl:text-[17px] font-bold">Credit</span>
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSplitOpen(true)}
+          className="h-10 rounded-xl border border-white/15 text-[13px] font-semibold text-zinc-200 hover:bg-white/10"
+        >
+          Split payment (part cash, part card)
+        </button>
         </div>
       )}
 
@@ -1616,6 +1727,33 @@ export const POSPage: React.FC<POSPageProps> = ({
                   <LayoutGrid className="w-4 h-4 text-zinc-600" />
                   <span>Add items</span>
                 </button>
+                <HeldSalesControls
+                  canHold={cart.length > 0}
+                  disabled={isCharging}
+                  snapshot={() => ({
+                    items: cart.map((item) => ({
+                      product_id: item.product.id,
+                      quantity: item.quantity,
+                      price_override: item.price_override,
+                      line_discount: item.line_discount,
+                    })),
+                    discount,
+                    customer_name: customerName.trim() || undefined,
+                    customer_id: customerId,
+                    total,
+                  })}
+                  onHeld={() => {
+                    setCart([]);
+                    setCustomerName('');
+                    setCustomerId(undefined);
+                    setCustomerPoints(undefined);
+                    setDiscount(0);
+                    setDiscountInput('');
+                    showToast({ text: 'Sale on hold. Find it under Held.' });
+                  }}
+                  onResume={resumeHeld}
+                  onError={(message) => setCheckoutError(message)}
+                />
                 <button
                   type="button"
                   onClick={clearCart}
@@ -1652,7 +1790,8 @@ export const POSPage: React.FC<POSPageProps> = ({
               ) : (
                 orderLines.map((item) => {
                   const justScanned = lastScan?.productId === item.product.id;
-                  const lineTotal = Math.round(item.unit_price * item.quantity * 100) / 100;
+                  const lineTotal = lineCents(item) / 100;
+                  const each = item.price_override ?? item.unit_price;
                   return (
                     <div
                       key={item.product.id}
@@ -1661,12 +1800,25 @@ export const POSPage: React.FC<POSPageProps> = ({
                       }`}
                     >
                       <div className="min-w-0 flex flex-col gap-0.5 xl:gap-1">
-                        <span className="text-sm md:text-[15px] xl:text-base xl:leading-[22px] font-semibold text-zinc-950 line-clamp-2 md:line-clamp-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditLineId(item.product.id)}
+                          title="Change quantity, discount or price"
+                          className="text-left text-sm md:text-[15px] xl:text-base xl:leading-[22px] font-semibold text-zinc-950 line-clamp-2 md:line-clamp-1 hover:underline"
+                        >
                           {item.product.name}
-                        </span>
+                        </button>
                         <span className="xl:hidden text-xs text-zinc-500 tabular-nums">
-                          {money(item.unit_price)} each
+                          {money(each)} each
+                          {item.line_discount ? ` · −${money(item.line_discount)}` : ''}
                         </span>
+                        {(item.line_discount || item.price_override !== undefined) && (
+                          <span className="hidden xl:block text-xs text-emerald-700 tabular-nums">
+                            {item.price_override !== undefined ? `Price changed from ${money(item.unit_price)}` : ''}
+                            {item.price_override !== undefined && item.line_discount ? ' · ' : ''}
+                            {item.line_discount ? `−${money(item.line_discount)} off` : ''}
+                          </span>
+                        )}
                         <span className="hidden xl:block font-mono text-xs leading-4 text-zinc-500 truncate">
                           {item.product.sku ? `${item.product.sku} · ` : ''}
                           {item.product.barcode}
@@ -1674,7 +1826,7 @@ export const POSPage: React.FC<POSPageProps> = ({
                       </div>
 
                       <span className="hidden xl:block text-right text-[15px] text-zinc-600 tabular-nums">
-                        {money(item.unit_price)}
+                        {money(each)}
                       </span>
 
                       <div className="flex justify-center">
@@ -1722,29 +1874,15 @@ export const POSPage: React.FC<POSPageProps> = ({
             {/* Customer + hints */}
             <footer className="h-12 md:h-11 xl:h-12 flex-shrink-0 px-3.5 md:px-4 xl:px-6 border-t border-zinc-100 bg-zinc-50 flex items-center justify-between gap-3">
               {customerOpen ? (
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                  <UserRound className="w-4 h-4 text-zinc-500 flex-shrink-0" />
-                  <input
-                    type="text"
-                    value={customerName}
-                    autoFocus
-                    {...fieldFocus}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === 'Escape') setCustomerOpen(false);
-                    }}
-                    placeholder="Customer name"
-                    aria-label="Customer name"
-                    className="flex-1 min-w-0 h-9 px-2.5 bg-white border border-zinc-200 rounded-lg text-[13px] text-zinc-900 outline-none focus:border-zinc-900 placeholder:text-zinc-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCustomerOpen(false)}
-                    className="h-9 px-2.5 rounded-lg text-[13px] font-semibold text-zinc-700 hover:bg-zinc-200/70"
-                  >
-                    Done
-                  </button>
-                </div>
+                <CustomerPicker
+                  value={{ id: customerId, name: customerName, points: customerPoints }}
+                  onChange={(c) => {
+                    setCustomerName(c.name);
+                    setCustomerId(c.id);
+                    setCustomerPoints(c.points);
+                  }}
+                  onDone={() => setCustomerOpen(false)}
+                />
               ) : (
                 <button
                   type="button"
@@ -1996,6 +2134,36 @@ export const POSPage: React.FC<POSPageProps> = ({
 
       {/* Printable receipt */}
       <ReceiptModal isOpen={receiptOpen} onClose={() => setReceiptOpen(false)} sale={completedSale} />
+      <SplitPaymentDialog
+        open={splitOpen}
+        total={total}
+        onClose={() => setSplitOpen(false)}
+        onConfirm={(payments) => void handleCharge('CASH', payments)}
+      />
+      <LineEditDialog
+        item={cart.find((i) => i.product.id === editLineId) ?? null}
+        canOverridePrice={canOverridePrice}
+        onClose={() => setEditLineId(null)}
+        onRemove={() => {
+          if (editLineId !== null) removeFromCart(editLineId);
+          setEditLineId(null);
+        }}
+        onSave={(patch) => {
+          setCart((prev) =>
+            prev.map((i) =>
+              i.product.id === editLineId
+                ? {
+                    ...i,
+                    quantity: Math.min(patch.quantity, Math.max(i.product.stock_quantity, 1)),
+                    line_discount: patch.line_discount,
+                    price_override: patch.price_override,
+                  }
+                : i,
+            ),
+          );
+          setEditLineId(null);
+        }}
+      />
     </div>
   );
 };

@@ -6,6 +6,9 @@ import {
   History,
   BarChart3,
   Store,
+  Wallet,
+  Contact,
+  Truck,
   Menu,
   X,
   Smartphone,
@@ -16,13 +19,36 @@ import {
 } from 'lucide-react';
 import { Role, User } from '../types';
 
-export type ActiveTab = 'pos' | 'returns' | 'inventory' | 'scanner' | 'history' | 'analytics' | 'users' | 'profile';
+export type ActiveTab =
+  | 'pos'
+  | 'returns'
+  | 'drawer'
+  | 'customers'
+  | 'inventory'
+  | 'purchasing'
+  | 'scanner'
+  | 'history'
+  | 'analytics'
+  | 'users'
+  | 'profile';
 
 /** Which tabs each role may open. Enforced again by the server on every request. */
 export const TABS_FOR_ROLE: Record<Role, ActiveTab[]> = {
-  CASHIER: ['pos', 'returns'],
-  MANAGER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics'],
-  OWNER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics', 'users', 'profile'],
+  CASHIER: ['pos', 'returns', 'drawer', 'customers'],
+  MANAGER: ['pos', 'returns', 'drawer', 'customers', 'inventory', 'purchasing', 'scanner', 'history', 'analytics'],
+  OWNER: [
+    'pos',
+    'returns',
+    'drawer',
+    'customers',
+    'inventory',
+    'purchasing',
+    'scanner',
+    'history',
+    'analytics',
+    'users',
+    'profile',
+  ],
 };
 
 const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', CASHIER: 'Cashier' };
@@ -37,7 +63,7 @@ const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', 
  * a cashier gets two tabs and no More button at all.
  */
 const PHONE_PRIMARY_TABS: ActiveTab[] = ['pos', 'returns', 'inventory', 'analytics'];
-const PHONE_MORE_TABS: ActiveTab[] = ['scanner', 'history', 'users', 'profile'];
+const PHONE_MORE_TABS: ActiveTab[] = ['drawer', 'customers', 'purchasing', 'scanner', 'history', 'users', 'profile'];
 
 /** Height of the phone bottom bar without its safe-area inset: 1px border + 64px row + 16px. */
 const PHONE_NAV_HEIGHT = 81;
@@ -80,7 +106,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allNavItems: NavItem[] = [
     { id: 'pos', label: 'POS Register', shortLabel: 'Register', icon: ShoppingCart, badge: cartCount },
     { id: 'returns', label: 'Returns & Refunds', shortLabel: 'Returns', icon: Undo2 },
+    { id: 'drawer', label: 'Cash Drawer', shortLabel: 'Drawer', icon: Wallet },
+    { id: 'customers', label: 'Customers', shortLabel: 'Customers', icon: Contact },
     { id: 'inventory', label: 'Inventory', shortLabel: 'Inventory', icon: Package },
+    { id: 'purchasing', label: 'Purchasing', shortLabel: 'Purchasing', icon: Truck },
     { id: 'scanner', label: 'Stock Scan (+/-)', shortLabel: 'Stock', icon: ScanLine },
     { id: 'history', label: 'Movement History', shortLabel: 'History', icon: History },
     { id: 'analytics', label: 'Sales & Audit', shortLabel: 'Sales', icon: BarChart3 },

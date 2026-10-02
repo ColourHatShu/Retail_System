@@ -12,6 +12,7 @@ import { returnsRouter } from './routes/returns';
 import { salesRouter } from './routes/sales';
 import { settingsRouter } from './routes/settings';
 import { usersRouter } from './routes/users';
+import { customersRouter, heldSalesRouter, purchasingRouter, reportsRouter, shiftsRouter } from './routes/operations';
 
 /** Builds the Express app without listening, so tests can drive it in-process. */
 export function createApp() {
@@ -43,6 +44,11 @@ export function createApp() {
   app.use('/api/returns', requireAuth, forbidImpersonation, returnsRouter);
   app.use('/api/movements', requireAuth, movementRouter);
   app.use('/api/settings', requireAuth, settingsRouter);
+  app.use('/api/shifts', requireAuth, forbidImpersonation, shiftsRouter);
+  app.use('/api/held-sales', requireAuth, forbidImpersonation, heldSalesRouter);
+  app.use('/api/customers', requireAuth, customersRouter);
+  app.use('/api/reports', requireAuth, reportsRouter);
+  app.use('/api/purchasing', requireAuth, forbidImpersonation, purchasingRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

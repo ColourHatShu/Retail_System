@@ -12,9 +12,18 @@ import { getProduct, requireProductRowByBarcode } from './products.service';
  * the current transaction. Refuses to go below zero. Returns the new balance.
  * Callers MUST pair this with recordMovement().
  */
-export async function applyStockDelta(tx: Queryable, product: ProductRow, delta: number): Promise<number> {
+/**
+ * allowNegative is only for sales rung up offline: the goods have already
+ * left the shop, so the count must follow even past zero.
+ */
+export async function applyStockDelta(
+  tx: Queryable,
+  product: ProductRow,
+  delta: number,
+  allowNegative = false,
+): Promise<number> {
   const after = product.stock_quantity + delta;
-  if (after < 0) {
+  if (after < 0 && !allowNegative) {
     throw conflict(
       'INSUFFICIENT_STOCK',
       `Cannot reduce stock of "${product.name}" below zero. Current stock is ${product.stock_quantity}, attempted deduction is ${-delta}.`,

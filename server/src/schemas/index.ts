@@ -122,6 +122,10 @@ export const checkout = z.object({
           product_id: z.coerce.number().int().positive().optional(),
           barcode: optionalText(64),
           quantity: z.coerce.number().int().positive().max(100_000),
+          /** Charge this per unit instead of the catalogue price. Manager or owner only. */
+          price_override: money.optional(),
+          /** Money off this line (all units together). */
+          line_discount: money.optional(),
         })
         .refine((i) => i.product_id !== undefined || i.barcode !== undefined, {
           message: 'each item needs a product_id or barcode',
@@ -132,6 +136,23 @@ export const checkout = z.object({
   payment_method: z.enum(PAYMENT_METHODS).default('CASH'),
   /** Required for CASH. Ignored for other methods (charged exactly the total). */
   amount_paid: money.optional(),
+  /**
+   * Several tenders for one sale. When present it replaces payment_method and
+   * amount_paid. Card tenders may not exceed the total; change comes from cash.
+   */
+  payments: z
+    .array(z.object({ method: z.enum(PAYMENT_METHODS), amount: money }))
+    .min(1)
+    .max(10)
+    .optional(),
+  customer_id: z.coerce.number().int().positive().optional(),
+  /**
+   * The register's own id for this sale: a retry with the same one returns
+   * the first sale instead of recording it twice. sold_at (with client_ref)
+   * marks a sale rung up offline and says when it really happened.
+   */
+  client_ref: z.string().trim().min(8).max(64).optional(),
+  sold_at: z.coerce.date().optional(),
   discount: money.default(0),
   /**
    * What the register displayed to the cashier. If the server's recomputed
@@ -309,9 +330,99 @@ export const settingsUpdate = z.object({
   pst_number: nullableText(40),
   store_address: nullableText(200),
   store_phone: nullableText(30),
+  loyalty_points_per_dollar: z.coerce.number().min(0).max(100).optional(),
   /** Days after a sale during which cashiers and managers may accept returns (owners always can). */
   return_window_days: z.coerce.number().int().min(0).max(3650).optional(),
   /** Refunds above this amount must be processed by a manager or owner. */
   refund_approval_threshold: money.optional(),
 });
 export type SettingsUpdate = z.infer<typeof settingsUpdate>;
+
+// ---------- cash drawer ----------
+
+export const shiftOpen = z.object({ opening_float: money });
+export const cashMovement = z.object({
+  type: z.enum(['PAY_IN', 'PAY_OUT']),
+  amount: money.refine((v) => v > 0, 'amount must be more than zero'),
+  reason: z.string().trim().min(2).max(200),
+});
+export const shiftClose = z.object({ counted_cash: money, note: optionalText(500) });
+export const shiftList = z.object({ limit: z.coerce.number().int().min(1).max(200).default(30) });
+
+// ---------- held sales ----------
+
+const heldLine = z.object({
+  product_id: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive().max(100_000),
+  price_override: money.optional(),
+  line_discount: money.optional(),
+});
+export const heldSaleCreate = z.object({
+  label: optionalText(60),
+  items: z.array(heldLine).min(1).max(500),
+  discount: money.default(0),
+  customer_name: optionalText(120),
+  customer_id: z.coerce.number().int().positive().optional(),
+  /** What the register showed; for the list only, never charged. */
+  total: money.optional(),
+});
+export type HeldSaleCreate = z.infer<typeof heldSaleCreate>;
+
+// ---------- customers ----------
+
+export const customerQuery = z.object({
+  q: optionalText(80),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export const customerCreate = z.object({
+  name: z.string().trim().min(1).max(120),
+  phone: nullableText(30),
+  email: z.union([z.literal(''), z.string().trim().email().max(160), z.null()]).optional()
+    .transform((v) => (v === '' ? null : v)),
+  notes: nullableText(500),
+});
+export type CustomerCreate = z.infer<typeof customerCreate>;
+export const customerUpdate = customerCreate.partial().extend({
+  /** Owners and managers adjust points by hand, e.g. after a customer redeems them. */
+  points: z.coerce.number().int().min(0).max(10_000_000).optional(),
+});
+export type CustomerUpdate = z.infer<typeof customerUpdate>;
+
+// ---------- reports ----------
+
+export const reportRange = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+
+// ---------- purchasing ----------
+
+export const supplierCreate = z.object({
+  name: z.string().trim().min(1).max(120),
+  contact_name: nullableText(120),
+  phone: nullableText(30),
+  email: nullableText(160),
+  notes: nullableText(500),
+});
+export type SupplierCreate = z.infer<typeof supplierCreate>;
+export const supplierUpdate = supplierCreate.partial();
+export type SupplierUpdate = z.infer<typeof supplierUpdate>;
+
+export const purchaseOrderCreate = z.object({
+  supplier_id: z.coerce.number().int().positive(),
+  notes: optionalText(500),
+  items: z
+    .array(
+      z.object({
+        product_id: z.coerce.number().int().positive(),
+        quantity: z.coerce.number().int().positive().max(1_000_000),
+        unit_cost: money,
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+export type PurchaseOrderCreate = z.infer<typeof purchaseOrderCreate>;
+export const purchaseOrderReceive = z.object({
+  items: z
+    .array(z.object({ item_id: z.coerce.number().int().positive(), quantity: z.coerce.number().int().positive() }))
+    .optional(),
+});
+export type PurchaseOrderReceive = z.infer<typeof purchaseOrderReceive>;

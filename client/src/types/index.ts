@@ -118,7 +118,12 @@ export interface StockMovement {
 export interface CartItem {
   product: Product;
   quantity: number;
+  /** Catalogue price; kept in step with the product list. */
   unit_price: number;
+  /** A manager's price for this line, per unit. */
+  price_override?: number;
+  /** Money off the whole line. */
+  line_discount?: number;
 }
 
 export interface Sale {
@@ -138,7 +143,15 @@ export interface Sale {
   pst_number?: string | null;
   discount: number;
   total: number;
-  payment_method: 'CASH' | 'CARD' | 'UPI_QR' | 'SPLIT';
+  payment_method: 'CASH' | 'CARD' | 'DEBIT' | 'CREDIT' | 'UPI_QR' | 'SPLIT';
+  /** Every tender on the sale; cash as handed over (change_due went back). */
+  payments?: Array<{ method: string; amount: number }>;
+  customer_id?: number | null;
+  points_earned?: number;
+  /** Present when the register rang this up offline. */
+  client_ref?: string | null;
+  /** Local-only: queued offline and not yet on the server. */
+  pending_sync?: boolean;
   amount_paid: number;
   change_due: number;
   customer_name?: string;
@@ -157,6 +170,8 @@ export interface Sale {
     returned_quantity?: number;
     unit_price: number;
     total_price: number;
+    list_price?: number;
+    line_discount?: number;
     unit?: string;
   }>;
 }
@@ -174,7 +189,7 @@ export interface ReturnRecord {
   refund: number;
   gst_amount?: number;
   pst_amount?: number;
-  refund_method: 'CASH' | 'CARD' | 'UPI_QR';
+  refund_method: 'CASH' | 'CARD' | 'DEBIT' | 'CREDIT' | 'UPI_QR';
   reason: string | null;
   processed_by: number | null;
   processed_by_name: string | null;

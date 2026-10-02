@@ -123,11 +123,13 @@ describe.skipIf(!hasDatabase)('migrations', { timeout: 120_000 }, () => {
       'SELECT tablename, policyname FROM pg_policies WHERE schemaname = current_schema() ORDER BY tablename',
     );
     expect(policies.rows.map((p) => `${p.tablename}:${p.policyname}`)).toEqual([
-      'barcode_lookups:shared_cache',
-      'departments:tenant_isolation', 'products:tenant_isolation', 'return_items:tenant_isolation',
-      'returns:tenant_isolation', 'sale_items:tenant_isolation', 'sales:tenant_isolation',
-      'sequences:tenant_isolation', 'sessions:tenant_isolation', 'settings:tenant_isolation',
-      'stock_movements:tenant_isolation', 'users:tenant_isolation',
+      'barcode_lookups:shared_cache', 'cash_movements:tenant_isolation', 'customers:tenant_isolation',
+      'departments:tenant_isolation', 'held_sales:tenant_isolation', 'products:tenant_isolation',
+      'purchase_order_items:tenant_isolation', 'purchase_orders:tenant_isolation', 'return_items:tenant_isolation',
+      'returns:tenant_isolation', 'sale_items:tenant_isolation', 'sale_payments:tenant_isolation',
+      'sales:tenant_isolation', 'sequences:tenant_isolation', 'sessions:tenant_isolation', 'settings:tenant_isolation',
+      'shifts:tenant_isolation', 'stock_movements:tenant_isolation', 'suppliers:tenant_isolation',
+      'users:tenant_isolation',
     ]);
 
     // Every legacy row was adopted by tenant 1, so the shop that existed
@@ -150,9 +152,10 @@ describe.skipIf(!hasDatabase)('migrations', { timeout: 120_000 }, () => {
       "SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity ORDER BY relname",
     );
     expect(rls.rows.map((r) => r.relname)).toEqual([
-      'admin_actions', 'admin_sessions', 'barcode_lookups', 'departments', 'platform_admins', 'products',
-      'return_items', 'returns', 'sale_items', 'sales', 'sequences', 'sessions', 'settings', 'stock_movements',
-      'tenants', 'users',
+      'admin_actions', 'admin_sessions', 'barcode_lookups', 'cash_movements', 'customers', 'departments',
+      'held_sales', 'platform_admins', 'products', 'purchase_order_items', 'purchase_orders', 'return_items',
+      'returns', 'sale_items', 'sale_payments', 'sales', 'sequences', 'sessions', 'settings', 'shifts',
+      'stock_movements', 'suppliers', 'tenants', 'users',
     ]);
 
     // Actor columns exist and are nullable so legacy rows survive.

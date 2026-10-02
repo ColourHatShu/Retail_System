@@ -20,6 +20,9 @@ import {
   BarChart3,
   Users,
   Store,
+  Wallet,
+  Contact,
+  Truck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Role, User } from '../types';
@@ -51,7 +54,10 @@ const ROLE_HELP: Record<Role, string> = {
 const SCREEN_META: Record<ActiveTab, { label: string; short: string; Icon: LucideIcon }> = {
   pos: { label: 'POS Register', short: 'Register', Icon: ShoppingCart },
   returns: { label: 'Returns & Refunds', short: 'Returns', Icon: Undo2 },
+  drawer: { label: 'Cash Drawer', short: 'Drawer', Icon: Wallet },
+  customers: { label: 'Customers', short: 'Customers', Icon: Contact },
   inventory: { label: 'Inventory', short: 'Inventory', Icon: Package },
+  purchasing: { label: 'Purchasing', short: 'Purchasing', Icon: Truck },
   scanner: { label: 'Stock Scan (+/-)', short: 'Stock Scan', Icon: ScanLine },
   history: { label: 'Movement History', short: 'History', Icon: History },
   analytics: { label: 'Sales & Audit', short: 'Sales', Icon: BarChart3 },

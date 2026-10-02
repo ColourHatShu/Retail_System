@@ -273,7 +273,8 @@ describe.skipIf(!hasDatabase)('sales', () => {
       expect(on.body.data).toMatchObject({ gst_amount: 1.3, pst_amount: 0, total: 11.3, tax_labels: { gst: 'HST' } });
 
       await api.put('/api/settings').send({ province: null, tax_rate_percent: 5 });
-    });
+      // Many round trips: allow for a remote test database.
+    }, 90_000);
 
     it('validates the payload shape', async () => {
       const empty = await api.post('/api/sales/checkout').send({ items: [] });
