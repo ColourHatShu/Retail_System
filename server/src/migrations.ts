@@ -544,6 +544,36 @@ const migrations: Migration[] = [
       CREATE POLICY shared_cache ON barcode_lookups USING (true) WITH CHECK (true);
     `,
   },
+  {
+    version: 10,
+    name: 'canada_tax',
+    sql: `
+      -- Province-aware Canadian tax. GST/HST goes to the CRA and PST/QST/RST
+      -- to the province, so a receipt keeps the two apart, and each product
+      -- says which of them it attracts. Every new column on sales, sale_items
+      -- and returns is a snapshot taken when the document was written: a
+      -- later rate change must never rewrite an old receipt.
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_class TEXT NOT NULL DEFAULT 'STANDARD';
+      ALTER TABLE products DROP CONSTRAINT IF EXISTS products_tax_class_check;
+      ALTER TABLE products ADD CONSTRAINT products_tax_class_check
+        CHECK (tax_class IN ('STANDARD', 'GST_ONLY', 'EXEMPT'));
+
+      -- NULL on receipts written before this migration: they used one flat rate.
+      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS tax_class TEXT;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS gst_cents    BIGINT;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS pst_cents    BIGINT;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS gst_rate_bps NUMERIC(8, 2);
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS pst_rate_bps NUMERIC(8, 2); -- QST is 997.5 bps
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_hst      BOOLEAN;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS province     TEXT;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS gst_number   TEXT;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS pst_number   TEXT;
+
+      -- Tax handed back by each refund, so the filing report can net it off.
+      ALTER TABLE returns ADD COLUMN IF NOT EXISTS gst_cents BIGINT NOT NULL DEFAULT 0;
+      ALTER TABLE returns ADD COLUMN IF NOT EXISTS pst_cents BIGINT NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version;

@@ -108,10 +108,24 @@ export interface BarcodeLookupResult {
 export interface StoreSettings {
   store_name: string;
   currency: string;
+  /** Combined rate a fully taxable item pays. */
   tax_rate_percent: number;
+  province: string | null;
+  gst_rate_percent: number;
+  pst_rate_percent: number;
+  hst: boolean;
+  tax_labels: { gst: string; pst: string | null };
+  gst_number: string | null;
+  pst_number: string | null;
+  store_address: string | null;
+  store_phone: string | null;
   return_window_days: number;
   refund_approval_threshold: number;
 }
+
+export type StoreSettingsUpdate = Partial<
+  Omit<StoreSettings, 'hst' | 'tax_labels' | 'province'> & { province: string | null }
+>;
 
 export interface ReturnRequest {
   sale_id?: number;
@@ -179,7 +193,7 @@ export const api = {
 
   // Store settings (tax rate, currency)
   getSettings: () => fetchJson<StoreSettings>(`${API_BASE}/settings`),
-  updateSettings: (data: Partial<StoreSettings>) => put<StoreSettings>('/settings', data),
+  updateSettings: (data: StoreSettingsUpdate) => put<StoreSettings>('/settings', data),
 
   // Departments
   getDepartments: () => fetchJson<Department[]>(`${API_BASE}/departments`),

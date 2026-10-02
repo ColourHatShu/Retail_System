@@ -16,13 +16,13 @@ import {
 } from 'lucide-react';
 import { Role, User } from '../types';
 
-export type ActiveTab = 'pos' | 'returns' | 'inventory' | 'scanner' | 'history' | 'analytics' | 'users';
+export type ActiveTab = 'pos' | 'returns' | 'inventory' | 'scanner' | 'history' | 'analytics' | 'users' | 'profile';
 
 /** Which tabs each role may open. Enforced again by the server on every request. */
 export const TABS_FOR_ROLE: Record<Role, ActiveTab[]> = {
   CASHIER: ['pos', 'returns'],
   MANAGER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics'],
-  OWNER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics', 'users'],
+  OWNER: ['pos', 'returns', 'inventory', 'scanner', 'history', 'analytics', 'users', 'profile'],
 };
 
 const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', CASHIER: 'Cashier' };
@@ -37,7 +37,7 @@ const ROLE_LABELS: Record<Role, string> = { OWNER: 'Owner', MANAGER: 'Manager', 
  * a cashier gets two tabs and no More button at all.
  */
 const PHONE_PRIMARY_TABS: ActiveTab[] = ['pos', 'returns', 'inventory', 'analytics'];
-const PHONE_MORE_TABS: ActiveTab[] = ['scanner', 'history', 'users'];
+const PHONE_MORE_TABS: ActiveTab[] = ['scanner', 'history', 'users', 'profile'];
 
 /** Height of the phone bottom bar without its safe-area inset: 1px border + 64px row + 16px. */
 const PHONE_NAV_HEIGHT = 81;
@@ -85,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'history', label: 'Movement History', shortLabel: 'History', icon: History },
     { id: 'analytics', label: 'Sales & Audit', shortLabel: 'Sales', icon: BarChart3 },
     { id: 'users', label: 'Staff & Access', shortLabel: 'Staff', icon: Users },
+    { id: 'profile', label: 'Store Profile', shortLabel: 'Profile', icon: Store },
   ];
   const navItems = allNavItems.filter((item) => allowed.includes(item.id));
 

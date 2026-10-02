@@ -1,13 +1,14 @@
 import { currentDb, row, rows, withTransaction } from '../db';
 import type { Queryable } from '../db';
 import { badRequest, conflict, notFound } from '../lib/errors';
-import { applyBps, bpsToPercent, formatMoney, fromCents, toCents } from '../lib/money';
+import { bpsToPercent, formatMoney, fromCents, toCents } from '../lib/money';
+import { computeTax, taxLabels } from '../lib/tax';
 import type { CheckoutInput } from '../schemas';
 import type { AuthUser, Pagination, ProductRow, Sale, SaleItem, SaleItemRow, SaleRow } from '../types';
 import { applyStockDelta } from './inventory.service';
 import { recordMovement } from './ledger';
 import { findProductRowByBarcode, findProductRowById, requireProductRowById } from './products.service';
-import { getSettings } from './settings.service';
+import { getSettings, taxRates } from './settings.service';
 
 // ---------------------------------------------------------------------------
 // Serialisation
@@ -44,18 +45,28 @@ function serializeItem(r: SaleItemRow): SaleItem {
     returned_quantity: r.returned_quantity ?? 0,
     unit_price: fromCents(r.unit_price_cents),
     total_price: fromCents(r.total_price_cents),
+    tax_class: r.tax_class,
     unit: r.unit,
     department_name: r.department_name,
   };
 }
 
 export function serializeSale(r: SaleRow, items?: SaleItemRow[]): Sale {
+  // Receipts from before province-aware tax carry one flat rate, shown as "Tax".
+  const split = r.gst_cents !== null;
   return {
     id: r.id,
     receipt_number: r.receipt_number,
     subtotal: fromCents(r.subtotal_cents),
     tax_rate: bpsToPercent(r.tax_rate_bps),
     tax_amount: fromCents(r.tax_cents),
+    gst_amount: fromCents(split ? r.gst_cents! : r.tax_cents),
+    pst_amount: fromCents(split ? (r.pst_cents ?? 0) : 0),
+    gst_rate: bpsToPercent(split ? (r.gst_rate_bps ?? 0) : r.tax_rate_bps),
+    pst_rate: bpsToPercent(split ? (r.pst_rate_bps ?? 0) : 0),
+    tax_labels: split ? taxLabels(r.province, r.pst_rate_bps ?? 0) : { gst: 'Tax', pst: null },
+    gst_number: r.gst_number ?? null,
+    pst_number: r.pst_number ?? null,
     discount: fromCents(r.discount_cents),
     total: fromCents(r.total_cents),
     payment_method: r.payment_method,
@@ -191,9 +202,13 @@ export async function checkout(input: CheckoutInput, cashier: AuthUser): Promise
     if (discountCents > subtotal) {
       throw badRequest(`Discount (${formatMoney(discountCents, currency)}) cannot exceed the subtotal`);
     }
-    const taxable = subtotal - discountCents;
-    const tax = applyBps(taxable, settings.tax_rate_bps);
-    const total = taxable + tax;
+    const rates = taxRates(settings);
+    const tax = computeTax(
+      lines.map((l) => ({ gross_cents: l.product.price_cents * l.quantity, tax_class: l.product.tax_class })),
+      discountCents,
+      rates,
+    );
+    const total = tax.total_cents;
 
     if (input.expected_total !== undefined) {
       const expected = toCents(input.expected_total);
@@ -233,14 +248,16 @@ export async function checkout(input: CheckoutInput, cashier: AuthUser): Promise
       tx,
       `INSERT INTO sales (
          receipt_number, subtotal_cents, tax_rate_bps, tax_cents, discount_cents, total_cents,
-         payment_method, amount_paid_cents, change_due_cents, customer_name, customer_phone, cashier_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         payment_method, amount_paid_cents, change_due_cents, customer_name, customer_phone, cashier_id,
+         gst_cents, pst_cents, gst_rate_bps, pst_rate_bps, tax_hst, province, gst_number, pst_number
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        RETURNING id`,
       [
         receipt,
         subtotal,
-        settings.tax_rate_bps,
-        tax,
+        // Integer column kept for old readers; the exact rates follow below.
+        Math.round(settings.tax_rate_bps),
+        tax.tax_cents,
         discountCents,
         total,
         input.payment_method,
@@ -249,13 +266,21 @@ export async function checkout(input: CheckoutInput, cashier: AuthUser): Promise
         customerName,
         customerPhone,
         cashier.id,
+        tax.gst_cents,
+        tax.pst_cents,
+        rates.gst_bps,
+        rates.pst_bps,
+        rates.hst,
+        settings.province,
+        settings.gst_number,
+        settings.pst_number,
       ],
     ))!;
 
     for (const l of lines) {
       await tx.query(
-        `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, unit_price_cents, total_price_cents)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, quantity, unit_price_cents, total_price_cents, tax_class)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           sale.id,
           l.product.id,
@@ -264,6 +289,7 @@ export async function checkout(input: CheckoutInput, cashier: AuthUser): Promise
           l.quantity,
           l.product.price_cents,
           l.product.price_cents * l.quantity,
+          l.product.tax_class,
         ],
       );
       const after = await applyStockDelta(tx, l.product, -l.quantity);

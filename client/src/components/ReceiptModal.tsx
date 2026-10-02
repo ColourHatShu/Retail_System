@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import JsBarcode from 'jsbarcode';
 import confetti from 'canvas-confetti';
 import { Printer, CheckCircle2, X } from 'lucide-react';
 import { Sale } from '../types';
+import { api } from '../utils/api';
+import type { StoreSettings } from '../utils/api';
+import { formatGstNumber } from '../utils/tax';
 
 interface ReceiptModalProps {
   sale: Sale | null;
@@ -12,6 +15,20 @@ interface ReceiptModalProps {
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClose }) => {
   const barcodeRef = useRef<SVGSVGElement | null>(null);
+  const [store, setStore] = useState<StoreSettings | null>(null);
+
+  // Store name, address and phone print from the store profile.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    api
+      .getSettings()
+      .then((s) => !cancelled && setStore(s))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && sale) {
@@ -72,10 +89,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClos
           {/* Store info */}
           <div className="text-center space-y-1">
             <h2 className="text-sm font-bold tracking-tight text-zinc-950 uppercase font-sans">
-              Minimal Retail System
+              {store?.store_name || 'Retail Store'}
             </h2>
-            <p className="text-[11px] text-zinc-500 font-sans">POS & Live Inventory Terminal</p>
-            <p className="text-[10px] text-zinc-400 font-sans">100 Market St • Store #01</p>
+            {store?.store_address && (
+              <p className="text-[11px] text-zinc-500 font-sans whitespace-pre-line">{store.store_address}</p>
+            )}
+            {store?.store_phone && <p className="text-[10px] text-zinc-400 font-sans">Tel {store.store_phone}</p>}
+            {/* The number as it was when the sale was made; reprints never change. */}
+            {(sale.gst_number ?? store?.gst_number) && (
+              <p className="text-[10px] text-zinc-500 font-sans">
+                GST/HST Reg. # {formatGstNumber(sale.gst_number ?? store?.gst_number)}
+              </p>
+            )}
+            {sale.tax_labels?.pst && (sale.pst_number ?? store?.pst_number) && (
+              <p className="text-[10px] text-zinc-500 font-sans">
+                {sale.tax_labels?.pst ?? 'PST'} Reg. # {sale.pst_number ?? store?.pst_number}
+              </p>
+            )}
           </div>
 
           <div className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
@@ -129,11 +159,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, isOpen, onClos
                 <span>-${Number(sale.discount).toFixed(2)}</span>
               </div>
             )}
-            {sale.tax_amount > 0 && (
-              <div className="flex justify-between text-zinc-500">
-                <span>Tax ({sale.tax_rate}%)</span>
-                <span>${Number(sale.tax_amount).toFixed(2)}</span>
-              </div>
+            {sale.tax_labels ? (
+              <>
+                <div className="flex justify-between text-zinc-500">
+                  <span>
+                    {sale.tax_labels.gst} ({sale.tax_labels.gst === 'HST' ? sale.tax_rate : sale.gst_rate}%)
+                  </span>
+                  <span>${Number(sale.gst_amount ?? 0).toFixed(2)}</span>
+                </div>
+                {sale.tax_labels.pst && (
+                  <div className="flex justify-between text-zinc-500">
+                    <span>
+                      {sale.tax_labels.pst} ({sale.pst_rate}%)
+                    </span>
+                    <span>${Number(sale.pst_amount ?? 0).toFixed(2)}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              sale.tax_amount > 0 && (
+                <div className="flex justify-between text-zinc-500">
+                  <span>Tax ({sale.tax_rate}%)</span>
+                  <span>${Number(sale.tax_amount).toFixed(2)}</span>
+                </div>
+              )
             )}
             <div className="flex justify-between font-bold text-sm text-zinc-950 pt-1 border-t border-zinc-200">
               <span>TOTAL</span>

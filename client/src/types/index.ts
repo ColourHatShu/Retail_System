@@ -1,3 +1,5 @@
+import type { TaxClass } from '../utils/tax';
+
 export type Role = 'OWNER' | 'MANAGER' | 'CASHIER';
 
 export interface User {
@@ -78,6 +80,8 @@ export interface Product {
   image_url?: string;
   /** Archived products keep their receipts but leave the catalogue and register. */
   is_active?: boolean;
+  /** STANDARD = full tax, GST_ONLY = no provincial part, EXEMPT = no tax. */
+  tax_class?: TaxClass;
   created_at?: string;
   updated_at?: string;
 }
@@ -123,6 +127,15 @@ export interface Sale {
   subtotal: number;
   tax_rate: number;
   tax_amount: number;
+  /** GST or HST (CRA). Equals tax_amount on receipts from before the province split. */
+  gst_amount?: number;
+  /** PST / QST / RST (province). */
+  pst_amount?: number;
+  gst_rate?: number;
+  pst_rate?: number;
+  tax_labels?: { gst: string; pst: string | null };
+  gst_number?: string | null;
+  pst_number?: string | null;
   discount: number;
   total: number;
   payment_method: 'CASH' | 'CARD' | 'UPI_QR' | 'SPLIT';
@@ -159,6 +172,8 @@ export interface ReturnRecord {
   sale_id: number;
   receipt_number?: string;
   refund: number;
+  gst_amount?: number;
+  pst_amount?: number;
   refund_method: 'CASH' | 'CARD' | 'UPI_QR';
   reason: string | null;
   processed_by: number | null;

@@ -1,5 +1,7 @@
 /** Database row and API shapes. Row types carry *_cents; API types carry decimals. */
 
+import type { Province, TaxClass, TaxLabels } from './lib/tax';
+
 export const MOVEMENT_TYPES = [
   'INITIAL',
   'RESTOCK',
@@ -149,6 +151,7 @@ export interface ProductRow {
   unit: string;
   image_url: string | null;
   is_active: boolean;
+  tax_class: TaxClass;
   created_at: string;
   updated_at: string;
   department_name?: string;
@@ -173,6 +176,7 @@ export interface Product {
   image_url: string | null;
   /** Archived products keep their receipts but leave the catalogue and register. */
   is_active: boolean;
+  tax_class: TaxClass;
   created_at: string;
   updated_at: string;
 }
@@ -214,6 +218,15 @@ export interface SaleRow {
   subtotal_cents: number;
   tax_rate_bps: number;
   tax_cents: number;
+  /** The Canadian split. NULL on receipts written before province-aware tax. */
+  gst_cents: number | null;
+  pst_cents: number | null;
+  gst_rate_bps: number | null;
+  pst_rate_bps: number | null;
+  tax_hst: boolean | null;
+  province: string | null;
+  gst_number: string | null;
+  pst_number: string | null;
   discount_cents: number;
   total_cents: number;
   payment_method: PaymentMethod;
@@ -239,6 +252,8 @@ export interface SaleItemRow {
   quantity: number;
   unit_price_cents: number;
   total_price_cents: number;
+  /** NULL on receipts written before tax classes existed. */
+  tax_class: TaxClass | null;
   unit?: string;
   department_name?: string;
   returned_quantity?: number;
@@ -253,6 +268,7 @@ export interface SaleItem {
   returned_quantity: number;
   unit_price: number;
   total_price: number;
+  tax_class: TaxClass | null;
   unit?: string;
   department_name?: string;
 }
@@ -263,6 +279,9 @@ export interface ReturnRow {
   sale_id: number;
   kind: 'RETURN' | 'VOID';
   refund_cents: number;
+  /** Tax handed back, split as on the receipt. */
+  gst_cents: number;
+  pst_cents: number;
   refund_method: PaymentMethod;
   reason: string | null;
   processed_by: number | null;
@@ -291,6 +310,8 @@ export interface ReturnRecord {
   sale_id: number;
   receipt_number?: string;
   refund: number;
+  gst_amount: number;
+  pst_amount: number;
   refund_method: PaymentMethod;
   reason: string | null;
   processed_by: number | null;
@@ -314,6 +335,15 @@ export interface Sale {
   subtotal: number;
   tax_rate: number;
   tax_amount: number;
+  /** GST or HST (remitted to the CRA). */
+  gst_amount: number;
+  /** PST / QST / RST (remitted to the province). */
+  pst_amount: number;
+  gst_rate: number;
+  pst_rate: number;
+  tax_labels: TaxLabels;
+  gst_number: string | null;
+  pst_number: string | null;
   discount: number;
   total: number;
   payment_method: PaymentMethod;
@@ -335,6 +365,13 @@ export interface Settings {
   store_name: string;
   currency: string;
   tax_rate_bps: number;
+  province: Province | null;
+  gst_rate_bps: number;
+  pst_rate_bps: number;
+  gst_number: string | null;
+  pst_number: string | null;
+  store_address: string | null;
+  store_phone: string | null;
   return_window_days: number;
   refund_approval_threshold_cents: number;
   /** IANA zone the shop trades in; decides which calendar day a receipt belongs to. */

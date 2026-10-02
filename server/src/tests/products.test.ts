@@ -156,10 +156,13 @@ describe.skipIf(!hasDatabase)('products, departments, settings, errors', () => {
   describe('settings', () => {
     it('reads defaults and updates tax as a percentage', async () => {
       const get = await api.get('/api/settings');
-      expect(get.body.data).toEqual({
+      expect(get.body.data).toMatchObject({
         store_name: 'Nexus POS',
         currency: 'USD',
         tax_rate_percent: 5,
+        province: null,
+        gst_number: null,
+        tax_labels: { gst: 'Tax', pst: null },
         return_window_days: 30,
         refund_approval_threshold: 50,
       });

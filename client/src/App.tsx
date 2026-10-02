@@ -13,6 +13,7 @@ import { MovementHistoryPage } from './pages/MovementHistoryPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { UsersPage } from './pages/UsersPage';
 import { ReturnsPage } from './pages/ReturnsPage';
+import { StoreProfilePage } from './pages/StoreProfilePage';
 
 type AuthState = 'checking' | 'setup' | 'login' | 'ready';
 
@@ -234,6 +235,7 @@ export function App() {
           {activeTab === 'history' && <MovementHistoryPage departments={departments} />}
           {activeTab === 'analytics' && <AnalyticsPage departments={departments} />}
           {activeTab === 'users' && <UsersPage currentUser={user} />}
+          {activeTab === 'profile' && <StoreProfilePage currentUser={user} />}
         </main>
       </div>
 

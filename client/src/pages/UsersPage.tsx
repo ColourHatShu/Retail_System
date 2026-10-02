@@ -19,6 +19,7 @@ import {
   History,
   BarChart3,
   Users,
+  Store,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Role, User } from '../types';
@@ -55,6 +56,7 @@ const SCREEN_META: Record<ActiveTab, { label: string; short: string; Icon: Lucid
   history: { label: 'Movement History', short: 'History', Icon: History },
   analytics: { label: 'Sales & Audit', short: 'Sales', Icon: BarChart3 },
   users: { label: 'Staff & Access', short: 'Staff', Icon: Users },
+  profile: { label: 'Store Profile', short: 'Profile', Icon: Store },
 };
 
 /** Sidebar order, so the summary reads in the order the nav is laid out. */

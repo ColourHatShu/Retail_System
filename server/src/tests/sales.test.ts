@@ -214,6 +214,67 @@ describe.skipIf(!hasDatabase)('sales', () => {
       await api.put('/api/settings').send({ tax_rate_percent: 5 });
     });
 
+    it('charges province tax by product class and refunds it line by line', async () => {
+      const prof = await api
+        .put('/api/settings')
+        .send({ province: 'BC', gst_number: '123456789 rt0001', store_address: '1 Main St' });
+      expect(prof.status).toBe(200);
+      expect(prof.body.data).toMatchObject({
+        gst_rate_percent: 5,
+        pst_rate_percent: 7,
+        tax_labels: { gst: 'GST', pst: 'PST' },
+        gst_number: '123456789RT0001',
+      });
+      expect((await api.put('/api/settings').send({ gst_number: '12345' })).status).toBe(400);
+
+      const full = await makeProduct({ price: 10 });
+      const food = await makeProduct({ price: 10, tax_class: 'EXEMPT' });
+      const kids = await makeProduct({ price: 10, tax_class: 'GST_ONLY' });
+      const res = await api.post('/api/sales/checkout').send({
+        items: [
+          { product_id: full.id, quantity: 1 },
+          { product_id: food.id, quantity: 1 },
+          { product_id: kids.id, quantity: 1 },
+        ],
+        payment_method: 'CARD',
+        expected_total: 31.7,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data).toMatchObject({
+        subtotal: 30,
+        gst_amount: 1,
+        pst_amount: 0.7,
+        tax_amount: 1.7,
+        total: 31.7,
+        tax_labels: { gst: 'GST', pst: 'PST' },
+        gst_number: '123456789RT0001',
+      });
+
+      // Returning the exempt item refunds no tax; the fully taxable one refunds both.
+      const lines = res.body.data.items as Array<{ id: number; product_id: number }>;
+      const line = (id: number) => lines.find((l) => l.product_id === id)!.id;
+      const r1 = await api.post('/api/returns').send({
+        sale_id: res.body.data.id,
+        items: [{ sale_item_id: line(food.id), quantity: 1, restock: true }],
+      });
+      expect(r1.status).toBe(201);
+      expect(r1.body.data).toMatchObject({ refund: 10, gst_amount: 0, pst_amount: 0 });
+      const r2 = await api.post('/api/returns').send({
+        sale_id: res.body.data.id,
+        items: [{ sale_item_id: line(full.id), quantity: 1, restock: true }],
+      });
+      expect(r2.body.data).toMatchObject({ refund: 11.2, gst_amount: 0.5, pst_amount: 0.7 });
+
+      // Ontario: one HST line at 13%.
+      await api.put('/api/settings').send({ province: 'ON' });
+      const on = await api
+        .post('/api/sales/checkout')
+        .send({ items: [{ product_id: full.id, quantity: 1 }], payment_method: 'CARD' });
+      expect(on.body.data).toMatchObject({ gst_amount: 1.3, pst_amount: 0, total: 11.3, tax_labels: { gst: 'HST' } });
+
+      await api.put('/api/settings').send({ province: null, tax_rate_percent: 5 });
+    });
+
     it('validates the payload shape', async () => {
       const empty = await api.post('/api/sales/checkout').send({ items: [] });
       expect(empty.status).toBe(400);

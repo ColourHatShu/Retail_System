@@ -29,6 +29,7 @@ export function serializeProduct(r: ProductRow): Product {
     unit: r.unit,
     image_url: r.image_url,
     is_active: r.is_active,
+    tax_class: r.tax_class ?? 'STANDARD',
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -108,8 +109,8 @@ export async function createProduct(input: ProductCreate, by: AuthUser): Promise
       tx,
       `INSERT INTO products (
          barcode, sku, name, department_id, price_cents, cost_price_cents,
-         stock_quantity, min_stock_level, unit, image_url
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         stock_quantity, min_stock_level, unit, image_url, tax_class
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         input.barcode,
@@ -122,6 +123,7 @@ export async function createProduct(input: ProductCreate, by: AuthUser): Promise
         input.min_stock_level,
         input.unit,
         input.image_url ?? null,
+        input.tax_class,
       ],
     );
     const productId = inserted!.id;
@@ -172,6 +174,7 @@ export async function updateProduct(id: number, input: ProductUpdate): Promise<P
     if (input.min_stock_level !== undefined) assign('min_stock_level', input.min_stock_level);
     if (input.unit !== undefined) assign('unit', input.unit);
     if (input.image_url !== undefined) assign('image_url', input.image_url);
+    if (input.tax_class !== undefined) assign('tax_class', input.tax_class);
     if (input.is_active !== undefined) assign('is_active', input.is_active);
 
     if (sets.length > 0) {

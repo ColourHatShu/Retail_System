@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { Department, Product, CartItem, Sale } from '../types';
 import { api, ApiError } from '../utils/api';
+import type { StoreSettings } from '../utils/api';
+import { computeTax, percentToRateBps } from '../utils/tax';
 import { playScanSuccessSound, playPaymentSuccessSound, playScanErrorSound } from '../utils/audio';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -213,13 +215,13 @@ export const POSPage: React.FC<POSPageProps> = ({
 
   // Tax rate comes from store settings; the server is the authority and will
   // refuse a checkout whose displayed total no longer matches its own maths.
-  const [taxRate, setTaxRate] = useState<number>(5);
+  const [taxSettings, setTaxSettings] = useState<StoreSettings | null>(null);
   useEffect(() => {
     let cancelled = false;
     api
       .getSettings()
       .then((s) => {
-        if (!cancelled) setTaxRate(s.tax_rate_percent);
+        if (!cancelled) setTaxSettings(s);
       })
       .catch((err) => console.warn('Could not load store settings, using default tax rate', err));
     return () => {
@@ -236,9 +238,9 @@ export const POSPage: React.FC<POSPageProps> = ({
   );
 
   // ---- money ---------------------------------------------------------------
-  // Mirrors the server's integer-cent arithmetic exactly (lib/money.ts): cents
-  // per line, discount off the subtotal, tax on what is left. The displayed
-  // total is therefore the one `expected_total` will be checked against.
+  // Mirrors the server's integer-cent arithmetic exactly (lib/tax.ts): cents
+  // per line, discount spread over the tax classes, GST/HST and PST rounded
+  // once each. The displayed total is the one `expected_total` is checked against.
   const [discount, setDiscount] = useState(0);
 
   const totals = useMemo(() => {
@@ -246,20 +248,35 @@ export const POSPage: React.FC<POSPageProps> = ({
       (sum, item) => sum + Math.round(item.unit_price * 100) * item.quantity,
       0,
     );
-    const taxBps = Math.round((taxRate + 1e-9) * 100);
     const discountCents = Math.min(Math.max(Math.round((discount + 1e-9) * 100), 0), subtotalCents);
-    const taxableCents = subtotalCents - discountCents;
-    const taxCents = Math.round((taxableCents * taxBps) / 10000);
-    const totalCents = taxableCents + taxCents;
+    const rates = {
+      gst_bps: percentToRateBps(taxSettings?.gst_rate_percent ?? 5),
+      pst_bps: percentToRateBps(taxSettings?.pst_rate_percent ?? 0),
+      hst: taxSettings?.hst ?? false,
+    };
+    const t = computeTax(
+      cart.map((item) => ({
+        gross_cents: Math.round(item.unit_price * 100) * item.quantity,
+        tax_class: item.product.tax_class ?? 'STANDARD',
+      })),
+      discountCents,
+      rates,
+    );
     return {
       subtotal: subtotalCents / 100,
       discount: discountCents / 100,
-      taxAmount: taxCents / 100,
-      total: totalCents / 100,
+      gstAmount: t.gst_cents / 100,
+      pstAmount: t.pst_cents / 100,
+      taxAmount: t.tax_cents / 100,
+      total: t.total_cents / 100,
     };
-  }, [cart, taxRate, discount]);
+  }, [cart, taxSettings, discount]);
 
-  const { subtotal, taxAmount, total } = totals;
+  const { subtotal, taxAmount, gstAmount, pstAmount, total } = totals;
+  const taxRate = taxSettings?.tax_rate_percent ?? 5;
+  const gstLabel = taxSettings?.tax_labels.gst ?? 'Tax';
+  const pstLabel = taxSettings?.tax_labels.pst ?? null;
+  const gstRateShown = taxSettings ? (taxSettings.hst ? taxRate : taxSettings.gst_rate_percent) : taxRate;
   const appliedDiscount = totals.discount;
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -834,8 +851,7 @@ export const POSPage: React.FC<POSPageProps> = ({
         setCheckoutError(`${err.message} The order has been updated with current prices and stock.`);
         try {
           await refreshData();
-          const settings = await api.getSettings();
-          setTaxRate(settings.tax_rate_percent);
+          setTaxSettings(await api.getSettings());
         } catch (refreshErr) {
           console.warn('Refresh after checkout conflict failed', refreshErr);
         }
@@ -1099,9 +1115,19 @@ export const POSPage: React.FC<POSPageProps> = ({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <span>Tax ({taxRate}%)</span>
-          <span className="text-zinc-100 tabular-nums">{money(taxAmount)}</span>
+          <span>
+            {gstLabel} ({gstRateShown}%)
+          </span>
+          <span className="text-zinc-100 tabular-nums">{money(gstAmount)}</span>
         </div>
+        {pstLabel && (
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {pstLabel} ({taxSettings?.pst_rate_percent}%)
+            </span>
+            <span className="text-zinc-100 tabular-nums">{money(pstAmount)}</span>
+          </div>
+        )}
       </div>
 
       {/* Total due */}

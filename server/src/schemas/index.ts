@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PROVINCE_CODES, TAX_CLASSES } from '../lib/tax';
 import { MOVEMENT_TYPES, PAYMENT_METHODS, RETURN_CONDITIONS, ROLES } from '../types';
 
 // ---------- shared primitives ----------
@@ -59,6 +60,8 @@ export const productCreate = z.object({
   min_stock_level: z.coerce.number().int().min(0).default(5),
   unit: z.preprocess((v) => (v === '' ? undefined : v), z.string().trim().min(1).max(20).default('pcs')),
   image_url: nullableText(500),
+  /** STANDARD = full tax, GST_ONLY = no provincial tax, EXEMPT = zero-rated / exempt. */
+  tax_class: z.enum(TAX_CLASSES).default('STANDARD'),
 });
 export type ProductCreate = z.infer<typeof productCreate>;
 
@@ -286,6 +289,26 @@ export const settingsUpdate = z.object({
     .transform((s) => s.toUpperCase())
     .optional(),
   tax_rate_percent: z.coerce.number().min(0).max(100).optional(),
+  /** Choosing a province fills in its GST/HST and PST rates unless they are sent too. null clears it. */
+  province: z.union([z.enum(PROVINCE_CODES as [string, ...string[]]), z.null()]).optional(),
+  gst_rate_percent: z.coerce.number().min(0).max(100).optional(),
+  pst_rate_percent: z.coerce.number().min(0).max(100).optional(),
+  /** CRA business number with its RT program account, e.g. 123456789 RT0001. Printed on receipts. */
+  gst_number: z
+    .union([
+      z.literal(''),
+      z
+        .string()
+        .trim()
+        .transform((v) => v.toUpperCase().replace(/\s+/g, ''))
+        .pipe(z.string().regex(/^\d{9}RT\d{4}$/, 'GST/HST number must look like 123456789RT0001')),
+      z.null(),
+    ])
+    .optional(),
+  /** Provincial registration (BC/SK PST, QC QST, MB RST). Free text: each province formats it differently. */
+  pst_number: nullableText(40),
+  store_address: nullableText(200),
+  store_phone: nullableText(30),
   /** Days after a sale during which cashiers and managers may accept returns (owners always can). */
   return_window_days: z.coerce.number().int().min(0).max(3650).optional(),
   /** Refunds above this amount must be processed by a manager or owner. */

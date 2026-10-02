@@ -3,6 +3,7 @@ import type { Queryable } from '../db';
 import { declareScope } from '../lib/tenant';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors';
 import { formatMoney, fromCents } from '../lib/money';
+import { refundParts } from '../lib/tax';
 import type { ReturnCreate } from '../schemas';
 import type {
   AuthUser,
@@ -43,6 +44,8 @@ function serializeReturn(r: ReturnRow, items?: ReturnItemRow[]): ReturnRecord {
     sale_id: r.sale_id,
     receipt_number: r.receipt_number,
     refund: fromCents(r.refund_cents),
+    gst_amount: fromCents(r.gst_cents ?? 0),
+    pst_amount: fromCents(r.pst_cents ?? 0),
     refund_method: r.refund_method,
     reason: r.reason,
     processed_by: r.processed_by,
@@ -103,11 +106,15 @@ interface PlannedLine {
   refund_cents: number;
 }
 
+type LockedSale = SaleRow & { refunded_cents: number; refunded_gst_cents: number; refunded_pst_cents: number };
+
 interface ReturnPlan {
-  sale: SaleRow & { refunded_cents: number };
+  sale: LockedSale;
   items: SaleItemRow[];
   lines: PlannedLine[];
   refund_cents: number;
+  gst_cents: number;
+  pst_cents: number;
   refund_method: PaymentMethod;
   completes_sale: boolean;
   requires_manager: boolean;
@@ -122,10 +129,10 @@ interface ReturnPlan {
  * leave a cent behind or refund a cent too many.
  */
 function planLines(
-  sale: SaleRow & { refunded_cents: number },
+  sale: LockedSale,
   items: SaleItemRow[],
   requested: ReturnCreate['items'],
-): { lines: PlannedLine[]; refund_cents: number; completes_sale: boolean } {
+): { lines: PlannedLine[]; refund_cents: number; gst_cents: number; pst_cents: number; completes_sale: boolean } {
   const seen = new Set<number>();
   const lines: PlannedLine[] = [];
 
@@ -148,10 +155,28 @@ function planLines(
     lines.push({ item, quantity: req.quantity, restock: req.restock, condition: req.condition, refund_cents: 0 });
   }
 
-  const ratio = sale.subtotal_cents > 0 ? sale.total_cents / sale.subtotal_cents : 0;
-  for (const l of lines) {
-    l.refund_cents = Math.round(l.item.unit_price_cents * l.quantity * ratio);
+  // Receipts with the Canadian split refund each line at its own tax class;
+  // older flat-rate receipts scale by total / subtotal as before.
+  let gstExact = 0;
+  let pstExact = 0;
+  if (sale.gst_cents !== null) {
+    const rates = { gst_bps: sale.gst_rate_bps ?? 0, pst_bps: sale.pst_rate_bps ?? 0, hst: !!sale.tax_hst };
+    for (const l of lines) {
+      const part = refundParts(l.item.unit_price_cents, l.quantity, l.item.tax_class ?? 'STANDARD', sale, rates);
+      l.refund_cents = Math.round(part.base + part.gst + part.pst);
+      gstExact += part.gst;
+      pstExact += part.pst;
+    }
+  } else {
+    const ratio = sale.subtotal_cents > 0 ? sale.total_cents / sale.subtotal_cents : 0;
+    const taxShare = sale.total_cents > 0 ? sale.tax_cents / sale.total_cents : 0;
+    for (const l of lines) {
+      l.refund_cents = Math.round(l.item.unit_price_cents * l.quantity * ratio);
+      gstExact += l.refund_cents * taxShare;
+    }
   }
+  let gst_cents = Math.round(gstExact);
+  let pst_cents = Math.round(pstExact);
 
   const completes_sale = items.every((it) => {
     const now = lines.find((l) => l.item.id === it.id)?.quantity ?? 0;
@@ -168,14 +193,19 @@ function planLines(
     last.refund_cents += target - refund_cents;
     refund_cents = target;
   }
+  // Never hand back more tax than is left; the last return hands back exactly that.
+  const gstLeft = (sale.gst_cents ?? sale.tax_cents) - sale.refunded_gst_cents;
+  const pstLeft = (sale.pst_cents ?? 0) - sale.refunded_pst_cents;
+  gst_cents = completes_sale ? gstLeft : Math.min(gst_cents, gstLeft);
+  pst_cents = completes_sale ? pstLeft : Math.min(pst_cents, pstLeft);
 
-  return { lines, refund_cents, completes_sale };
+  return { lines, refund_cents, gst_cents: Math.max(0, gst_cents), pst_cents: Math.max(0, pst_cents), completes_sale };
 }
 
 async function lockSale(
   tx: Queryable,
   ref: { sale_id?: number; receipt_number?: string },
-): Promise<SaleRow & { refunded_cents: number }> {
+): Promise<LockedSale> {
   const sale =
     ref.sale_id !== undefined
       ? await row<SaleRow>(tx, 'SELECT * FROM sales WHERE id = $1 FOR UPDATE', [ref.sale_id])
@@ -183,12 +213,14 @@ async function lockSale(
           (ref.receipt_number ?? '').trim().toUpperCase(),
         ]);
   if (!sale) throw notFound(`Receipt ${ref.receipt_number ?? ref.sale_id} not found`);
-  const { refunded } = (await row<{ refunded: number }>(
+  const sums = (await row<{ refunded: number; gst: number; pst: number }>(
     tx,
-    'SELECT COALESCE(SUM(refund_cents), 0) AS refunded FROM returns WHERE sale_id = $1',
+    `SELECT COALESCE(SUM(refund_cents), 0) AS refunded, COALESCE(SUM(gst_cents), 0) AS gst,
+            COALESCE(SUM(pst_cents), 0) AS pst
+     FROM returns WHERE sale_id = $1`,
     [sale.id],
   ))!;
-  return { ...sale, refunded_cents: refunded };
+  return { ...sale, refunded_cents: sums.refunded, refunded_gst_cents: sums.gst, refunded_pst_cents: sums.pst };
 }
 
 async function buildPlan(tx: Queryable, input: ReturnCreate, kind: 'RETURN' | 'VOID'): Promise<ReturnPlan> {
@@ -200,7 +232,7 @@ async function buildPlan(tx: Queryable, input: ReturnCreate, kind: 'RETURN' | 'V
   }
 
   const items = await getSaleItems(tx, sale.id);
-  const { lines, refund_cents, completes_sale } = planLines(sale, items, input.items);
+  const { lines, refund_cents, gst_cents, pst_cents, completes_sale } = planLines(sale, items, input.items);
 
   const ageDays = (Date.now() - new Date(sale.created_at).getTime()) / 86_400_000;
   const window_closed = kind === 'RETURN' && ageDays > settings.return_window_days;
@@ -211,6 +243,8 @@ async function buildPlan(tx: Queryable, input: ReturnCreate, kind: 'RETURN' | 'V
     items,
     lines,
     refund_cents,
+    gst_cents,
+    pst_cents,
     refund_method: input.refund_method ?? sale.payment_method,
     completes_sale,
     requires_manager,
@@ -288,9 +322,19 @@ async function persist(
   const number = await nextDocumentNumber(tx, 'RET');
   const created = (await row<{ id: number }>(
     tx,
-    `INSERT INTO returns (return_number, sale_id, kind, refund_cents, refund_method, reason, processed_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [number, plan.sale.id, kind, plan.refund_cents, plan.refund_method, input.reason ?? null, actor.id],
+    `INSERT INTO returns (return_number, sale_id, kind, refund_cents, refund_method, reason, processed_by, gst_cents, pst_cents)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [
+      number,
+      plan.sale.id,
+      kind,
+      plan.refund_cents,
+      plan.refund_method,
+      input.reason ?? null,
+      actor.id,
+      plan.gst_cents,
+      plan.pst_cents,
+    ],
   ))!;
 
   for (const l of plan.lines) {

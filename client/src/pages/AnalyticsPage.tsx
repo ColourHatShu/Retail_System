@@ -523,6 +523,25 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = () => {
     [rangedSales],
   );
   const totalTax = activeSales.reduce((acc, s) => acc + Number(s.tax_amount || 0), 0);
+
+  // Filing figures: everything charged in the range (voids included), less
+  // the tax handed back by refunds and voids in the same range.
+  const taxReport = useMemo(() => {
+    const sum = (list: Array<number | undefined>) => list.reduce<number>((a, v) => a + Number(v || 0), 0);
+    const gstCollected = sum(rangedSales.map((s) => s.gst_amount ?? s.tax_amount));
+    const pstCollected = sum(rangedSales.map((s) => s.pst_amount));
+    const gstRefunded = sum(rangedRefunds.map((r) => r.gst_amount));
+    const pstRefunded = sum(rangedRefunds.map((r) => r.pst_amount));
+    const labels = rangedSales.find((s) => s.tax_labels && s.tax_labels.gst !== 'Tax')?.tax_labels;
+    return {
+      gstLabel: labels?.gst === 'HST' ? 'HST' : labels ? 'GST' : 'GST/HST',
+      pstLabel: labels?.pst ?? 'PST',
+      gstCollected,
+      gstRefunded,
+      pstCollected,
+      pstRefunded,
+    };
+  }, [rangedSales, rangedRefunds]);
   const voidedCount = rangedSales.length - activeSales.length;
   const unitsSold = activeSales.reduce((acc, s) => acc + (itemUnits(s) ?? 0), 0);
   const averageTicket = activeSales.length > 0 ? netRevenue / activeSales.length : 0;
@@ -885,6 +904,43 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = () => {
           </span>
         </CardShell>
       </div>
+
+      {/* Tax to remit for the selected range */}
+      <CardShell className="flex flex-col gap-3 p-5">
+        <MicroLabel>Tax report</MicroLabel>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] leading-5 tabular-nums">
+            <thead>
+              <tr className="text-left text-xs text-zinc-500">
+                <th className="py-1 pr-4 font-medium">Tax</th>
+                <th className="py-1 pr-4 font-medium text-right">Collected</th>
+                <th className="py-1 pr-4 font-medium text-right">Refunded</th>
+                <th className="py-1 font-medium text-right">Net to remit</th>
+              </tr>
+            </thead>
+            <tbody className="text-zinc-900">
+              <tr className="border-t border-zinc-100">
+                <td className="py-1.5 pr-4 font-semibold">{taxReport.gstLabel} (CRA)</td>
+                <td className="py-1.5 pr-4 text-right">{figure(money(taxReport.gstCollected))}</td>
+                <td className="py-1.5 pr-4 text-right text-rose-700">{figure(negative(taxReport.gstRefunded))}</td>
+                <td className="py-1.5 text-right font-semibold">
+                  {figure(money(taxReport.gstCollected - taxReport.gstRefunded))}
+                </td>
+              </tr>
+              {(taxReport.pstCollected > 0 || taxReport.pstRefunded > 0) && (
+                <tr className="border-t border-zinc-100">
+                  <td className="py-1.5 pr-4 font-semibold">{taxReport.pstLabel} (province)</td>
+                  <td className="py-1.5 pr-4 text-right">{figure(money(taxReport.pstCollected))}</td>
+                  <td className="py-1.5 pr-4 text-right text-rose-700">{figure(negative(taxReport.pstRefunded))}</td>
+                  <td className="py-1.5 text-right font-semibold">
+                    {figure(money(taxReport.pstCollected - taxReport.pstRefunded))}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardShell>
 
       {/* Content */}
       <div className={wideLayout ? 'grid grid-cols-[minmax(0,1fr)_400px] items-start gap-4' : 'flex flex-col gap-4'}>

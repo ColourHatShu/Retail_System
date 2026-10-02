@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Barcode, Sparkles, Camera, Check, Loader2, Wand2, Plus, FolderPlus } from 'lucide-react';
 import { Department, Product } from '../types';
+import { TAX_CLASS_OPTIONS } from '../utils/tax';
+import type { TaxClass } from '../utils/tax';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { lookupBarcodeOnline } from '../utils/productLookup';
 import { playScanSuccessSound } from '../utils/audio';
@@ -40,6 +42,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [stockQuantity, setStockQuantity] = useState('1');
   const [minStockLevel, setMinStockLevel] = useState('5');
   const [unit, setUnit] = useState('pcs');
+  const [taxClass, setTaxClass] = useState<TaxClass>('STANDARD');
   const [isSaving, setIsSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,8 +127,10 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       setStockQuantity(product.stock_quantity.toString());
       setMinStockLevel(product.min_stock_level.toString());
       setUnit(product.unit || 'pcs');
+      setTaxClass(product.tax_class ?? 'STANDARD');
       setShowNewDeptForm(false);
     } else {
+      setTaxClass('STANDARD');
       setDepartmentId(defaultDepartmentId || 0);
       setName('');
       setBarcode(initialBarcode || '');
@@ -290,6 +295,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         stock_quantity: parseInt(stockQuantity, 10) || 0,
         min_stock_level: parseInt(minStockLevel, 10) || 5,
         unit: unit.trim() || 'pcs',
+        tax_class: taxClass,
       });
       onClose();
     } catch (err: any) {
@@ -650,6 +656,24 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                   className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900"
                 />
               </div>
+            </div>
+
+            {/* Tax class */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1.5">
+                Sales Tax
+              </label>
+              <select
+                value={taxClass}
+                onChange={(e) => setTaxClass(e.target.value as TaxClass)}
+                className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              >
+                {TAX_CLASS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label} — {o.hint}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* SKU (Optional) */}
